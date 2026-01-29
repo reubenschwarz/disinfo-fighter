@@ -14,10 +14,10 @@
 <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
 <script>
 // ============================================================
-// CONFIG — edit these to customise the game
+// CONFIG
 // ============================================================
 const CONFIG = {
-  runDurationSeconds: 120, // ~60s waves + ~60s boss
+  runDurationSeconds: 120,
   waveSchedule: [
     { time: 2,  enemies: [{ type: 'bruiser', count: 2 }] },
     { time: 12, enemies: [{ type: 'columnist', count: 2 }, { type: 'bruiser', count: 1 }] },
@@ -26,15 +26,13 @@ const CONFIG = {
     { time: 42, enemies: [{ type: 'shouter', count: 1 }, { type: 'bruiser', count: 2 }] },
     { time: 50, enemies: [{ type: 'lobbyist', count: 1 }, { type: 'columnist', count: 1 }, { type: 'shouter', count: 1 }] },
   ],
-  bossSpawnTime: 60, // seconds until boss appears
-  // Parody outlet names (change freely)
+  bossSpawnTime: 60,
   enemyNames: {
     bruiser:    'Daily Tattler',
     columnist:  'The Austeralian',
     shouter:    'Faux News AU',
     lobbyist:   'Advance Aus™',
   },
-  // Boss dialogue — safe parody defaults
   bossLinesParody: [
     "I have the best misinformation!",
     "Nobody spreads doubt like me!",
@@ -45,9 +43,10 @@ const CONFIG = {
     "Fake? You're fake! Everything is fake!",
     "I alone can confuse the narrative!",
   ],
-  // Optional: paste short real-world quotations here
   bossLinesOptionalRealQuotes: [],
   bubbleTexts: ['DOUBT', 'HOAX', 'JUST ASKING', 'BOTH SIDES', 'SUSPICIOUS', 'FAKE', 'WAKE UP'],
+  // Boss head image (Wikimedia Commons, CC-BY 4.0)
+  bossHeadURL: 'https://upload.wikimedia.org/wikipedia/commons/0/0b/Vladimir_Putin_close-up_%28cropped%29.jpg',
 };
 
 // ============================================================
@@ -57,73 +56,61 @@ const W = 320, H = 180;
 const LANE_TOP = 100, LANE_BOT = 170;
 const GROUND_Y = 150;
 
-// NES palette (authentic Double Dragon colours)
-const NES = {
-  black:    0x000000, darkGrey:  0x747474, midGrey:   0xbcbcbc, white:     0xfcfcfc,
-  darkRed:  0xa81000, red:       0xf83800, orange:    0xe45c10, peach:     0xfca044,
-  brown:    0x503000, tan:       0xac7c00, yellow:    0xf8d878, ltYellow:  0xfce4a0,
-  darkGreen:0x005800, green:     0x00b800, ltGreen:   0xb8f818, aqua:      0x58d854,
-  darkBlue: 0x0058f8, blue:      0x3cbcfc, skyBlue:   0x6888fc, ltBlue:    0xa4e4fc,
-  purple:   0x6844fc, magenta:   0xd800cc, pink:      0xf878f8, ltPink:    0xf8b8f8,
-  teal:     0x008888, darkTeal:  0x004058, skin:      0xfcbcb0, darkSkin:  0xd8a060,
+// 16-bit expanded palette (SNES/Genesis style — richer gradients)
+const PAL = {
+  black: 0x000000, darkGrey: 0x3a3a4a, midGrey: 0x8888a0, ltGrey: 0xc8c8d8, white: 0xfcfcfc,
+  // Skin tones (3-shade)
+  skinDark: 0xc08060, skin: 0xe8a880, skinLight: 0xf8d0b8,
+  // Hair
+  hairDark: 0x302010, hair: 0x5a3820, hairLight: 0x8a5830,
+  // Blues (player)
+  blueDark: 0x1838a0, blue: 0x3060d8, blueLight: 0x5888f8, blueBright: 0x88b0f8,
+  // Reds
+  redDark: 0x881010, red: 0xd02020, redLight: 0xf04040, redBright: 0xf88080,
+  // Greens
+  greenDark: 0x106010, green: 0x20a030, greenLight: 0x50d060, greenBright: 0x90f0a0,
+  // Oranges/brown
+  brownDark: 0x503010, brown: 0x886030, brownLight: 0xb88850, tan: 0xd8b070,
+  // Purples
+  purpleDark: 0x481878, purple: 0x7030b0, purpleLight: 0xa058e0, purpleBright: 0xc888f8,
+  // Yellows
+  yellowDark: 0xa88010, yellow: 0xd8b020, yellowLight: 0xf8e060, yellowBright: 0xf8f0a0,
+  // Boss military
+  oliveDark: 0x2a4a10, olive: 0x3a6a18, oliveLight: 0x508a28,
+  // UI
+  hpGreen: 0x30d838, hpYellow: 0xe8d020, hpRed: 0xe02020, hpBg: 0x181828,
 };
 
 // ============================================================
-// AUDIO ENGINE — Double Dragon style chiptune
+// AUDIO ENGINE
 // ============================================================
 class ChipAudio {
-  constructor() {
-    this.ctx = null;
-    this.musicGain = null;
-    this.sfxGain = null;
-    this.musicPlaying = false;
-    this.currentTrack = null;
-  }
-
+  constructor() { this.ctx = null; this.musicGain = null; this.sfxGain = null; this.musicPlaying = false; }
   init() {
     this.ctx = new (window.AudioContext || window.webkitAudioContext)();
-    this.musicGain = this.ctx.createGain();
-    this.musicGain.gain.value = 0.15;
-    this.musicGain.connect(this.ctx.destination);
-    this.sfxGain = this.ctx.createGain();
-    this.sfxGain.gain.value = 0.25;
-    this.sfxGain.connect(this.ctx.destination);
+    this.musicGain = this.ctx.createGain(); this.musicGain.gain.value = 0.15; this.musicGain.connect(this.ctx.destination);
+    this.sfxGain = this.ctx.createGain(); this.sfxGain.gain.value = 0.25; this.sfxGain.connect(this.ctx.destination);
   }
-
   resume() { if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume(); }
-
-  note(freq, dur, type = 'square', gain = null, delay = 0) {
+  note(freq, dur, type = 'square', gain = null) {
     if (!this.ctx) return;
-    const t = this.ctx.currentTime + delay;
-    const osc = this.ctx.createOscillator();
-    const g = this.ctx.createGain();
-    osc.type = type;
-    osc.frequency.setValueAtTime(freq, t);
-    g.gain.setValueAtTime(0.3, t);
-    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
-    osc.connect(g);
-    g.connect(gain || this.sfxGain);
-    osc.start(t);
-    osc.stop(t + dur);
+    const osc = this.ctx.createOscillator(), g = this.ctx.createGain();
+    osc.type = type; osc.frequency.value = freq;
+    g.gain.setValueAtTime(0.3, this.ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + dur);
+    osc.connect(g); g.connect(gain || this.sfxGain); osc.start(); osc.stop(this.ctx.currentTime + dur);
   }
-
   noise(dur = 0.08) {
     if (!this.ctx) return;
     const buf = this.ctx.createBuffer(1, this.ctx.sampleRate * dur, this.ctx.sampleRate);
-    const d = buf.getChannelData(0);
-    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
-    const src = this.ctx.createBufferSource();
-    src.buffer = buf;
-    const g = this.ctx.createGain();
-    g.gain.setValueAtTime(0.2, this.ctx.currentTime);
+    const d = buf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    const src = this.ctx.createBufferSource(); src.buffer = buf;
+    const g = this.ctx.createGain(); g.gain.setValueAtTime(0.2, this.ctx.currentTime);
     g.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + dur);
-    src.connect(g);
-    g.connect(this.sfxGain);
-    src.start();
+    src.connect(g); g.connect(this.sfxGain); src.start();
   }
-
   sfxPunch()   { this.note(180, 0.06, 'square'); this.noise(0.05); }
-  sfxHit()     { this.note(100, 0.1, 'sawtooth'); this.noise(0.08); }
+  sfxKick()    { this.note(120, 0.1, 'square'); this.noise(0.08); }
   sfxCombo()   { this.note(440, 0.05, 'square'); this.note(660, 0.05, 'square'); this.noise(0.04); }
   sfxCharged() { this.note(70, 0.18, 'sawtooth'); this.note(140, 0.12, 'square'); this.noise(0.12); }
   sfxBlock()   { this.note(280, 0.04, 'triangle'); }
@@ -131,375 +118,249 @@ class ChipAudio {
   sfxBossHit() { this.note(80, 0.15, 'sawtooth'); this.noise(0.12); }
   sfxWin()     { [523,659,784,1047].forEach((f,i) => setTimeout(() => this.note(f, 0.3, 'square'), i*120)); }
   sfxLose()    { [300,250,200,150].forEach((f,i) => setTimeout(() => this.note(f, 0.4, 'sawtooth'), i*180)); }
-
-  // Double Dragon-inspired stage music
-  // Uses NES channel simulation: 2 pulse (square), 1 triangle bass, 1 noise percussion
   startMusic(track = 'stage') {
-    if (this.musicPlaying) this.stopMusic();
-    this.musicPlaying = true;
-    this.currentTrack = track;
-
-    if (track === 'stage') this._playStageMusic();
-    else if (track === 'boss') this._playBossMusic();
-  }
-
-  _playStageMusic() {
-    // Driving bassline (triangle) + energetic melody (pulse) — Double Dragon Mission 1 vibe
-    // Key of E minor, 140 BPM → beat = ~0.428s, 16th = ~0.107s
-    const BPM = 140;
-    const beat = 60 / BPM;
-    const s16 = beat / 4;
-
-    // Bass pattern (E minor pentatonic, driving rhythm)
-    const bassPattern = [
-      82.41, 0, 82.41, 82.41, 110, 0, 98, 82.41,
-      82.41, 0, 82.41, 82.41, 123.47, 0, 110, 98,
-      73.42, 0, 73.42, 73.42, 98, 0, 82.41, 73.42,
-      82.41, 0, 82.41, 98, 110, 0, 123.47, 110,
-    ];
-
-    // Melody (pulse 1) — heroic marching feel
-    const melodyPattern = [
-      659, 0, 659, 784, 880, 0, 784, 659,
-      587, 0, 659, 0, 784, 0, 659, 0,
-      587, 0, 587, 659, 784, 0, 880, 784,
-      659, 0, 587, 0, 494, 0, 587, 0,
-    ];
-
-    // Harmony (pulse 2) — counter-melody, slightly behind
-    const harmonyPattern = [
-      330, 0, 330, 392, 440, 0, 392, 330,
-      294, 0, 330, 0, 392, 0, 330, 0,
-      294, 0, 294, 330, 392, 0, 440, 392,
-      330, 0, 294, 0, 247, 0, 294, 0,
-    ];
-
-    let step = 0;
-    this._musicInterval = setInterval(() => {
-      if (!this.musicPlaying) return;
-      const i = step % bassPattern.length;
-
-      // Triangle bass
-      if (bassPattern[i] > 0) this.note(bassPattern[i], s16 * 1.5, 'triangle', this.musicGain);
-      // Pulse 1 melody
-      if (melodyPattern[i] > 0) this.note(melodyPattern[i], s16 * 1.2, 'square', this.musicGain);
-      // Pulse 2 harmony (quieter)
-      if (harmonyPattern[i] > 0) {
-        const g2 = this.ctx.createGain();
-        g2.gain.value = 0.06;
-        g2.connect(this.musicGain);
-        this.note(harmonyPattern[i], s16 * 1.0, 'square', g2);
-      }
-      // Noise percussion on beats
-      if (i % 4 === 0) {
-        const nBuf = this.ctx.createBuffer(1, this.ctx.sampleRate * 0.04, this.ctx.sampleRate);
-        const nD = nBuf.getChannelData(0);
-        for (let j = 0; j < nD.length; j++) nD[j] = Math.random() * 2 - 1;
-        const nSrc = this.ctx.createBufferSource();
-        nSrc.buffer = nBuf;
-        const nG = this.ctx.createGain();
-        nG.gain.setValueAtTime(i % 8 === 0 ? 0.12 : 0.06, this.ctx.currentTime);
-        nG.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.04);
-        nSrc.connect(nG);
-        nG.connect(this.musicGain);
-        nSrc.start();
-      }
-      step++;
-    }, s16 * 1000);
-  }
-
-  _playBossMusic() {
-    // Menacing boss theme — lower key, heavier, more aggressive
-    const BPM = 160;
+    if (this.musicPlaying) this.stopMusic(); this.musicPlaying = true;
+    const BPM = track === 'boss' ? 160 : 140;
     const s16 = (60 / BPM) / 4;
-
-    const bassPattern = [
-      55, 55, 0, 55, 65.41, 0, 55, 0,
-      55, 55, 0, 55, 73.42, 0, 65.41, 0,
-      49, 49, 0, 49, 55, 0, 65.41, 55,
-      49, 49, 0, 65.41, 73.42, 0, 55, 0,
-    ];
-
-    const melodyPattern = [
-      440, 0, 440, 523, 587, 0, 523, 440,
-      392, 0, 440, 0, 523, 587, 523, 0,
-      392, 0, 392, 440, 523, 0, 587, 523,
-      440, 0, 523, 587, 659, 0, 587, 0,
-    ];
-
+    const bass = track === 'boss'
+      ? [55,55,0,55,65.41,0,55,0, 55,55,0,55,73.42,0,65.41,0, 49,49,0,49,55,0,65.41,55, 49,49,0,65.41,73.42,0,55,0]
+      : [82.41,0,82.41,82.41,110,0,98,82.41, 82.41,0,82.41,82.41,123.47,0,110,98, 73.42,0,73.42,73.42,98,0,82.41,73.42, 82.41,0,82.41,98,110,0,123.47,110];
+    const mel = track === 'boss'
+      ? [440,0,440,523,587,0,523,440, 392,0,440,0,523,587,523,0, 392,0,392,440,523,0,587,523, 440,0,523,587,659,0,587,0]
+      : [659,0,659,784,880,0,784,659, 587,0,659,0,784,0,659,0, 587,0,587,659,784,0,880,784, 659,0,587,0,494,0,587,0];
+    const harm = [330,0,330,392,440,0,392,330, 294,0,330,0,392,0,330,0, 294,0,294,330,392,0,440,392, 330,0,294,0,247,0,294,0];
     let step = 0;
     this._musicInterval = setInterval(() => {
       if (!this.musicPlaying) return;
-      const i = step % bassPattern.length;
-      if (bassPattern[i] > 0) this.note(bassPattern[i], s16 * 1.8, 'triangle', this.musicGain);
-      if (melodyPattern[i] > 0) this.note(melodyPattern[i], s16 * 1.3, 'square', this.musicGain);
-      // Heavy kick on every other beat
+      const i = step % bass.length;
+      if (bass[i] > 0) this.note(bass[i], s16 * 1.5, 'triangle', this.musicGain);
+      if (mel[i] > 0) this.note(mel[i], s16 * 1.2, 'square', this.musicGain);
+      if (track === 'stage' && harm[i] > 0) {
+        const g2 = this.ctx.createGain(); g2.gain.value = 0.06; g2.connect(this.musicGain);
+        this.note(harm[i], s16, 'square', g2);
+      }
       if (i % 4 === 0) {
-        const nBuf = this.ctx.createBuffer(1, this.ctx.sampleRate * 0.06, this.ctx.sampleRate);
-        const nD = nBuf.getChannelData(0);
-        for (let j = 0; j < nD.length; j++) nD[j] = Math.random() * 2 - 1;
-        const nSrc = this.ctx.createBufferSource();
-        nSrc.buffer = nBuf;
-        const nG = this.ctx.createGain();
-        nG.gain.setValueAtTime(0.15, this.ctx.currentTime);
-        nG.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.06);
-        nSrc.connect(nG);
-        nG.connect(this.musicGain);
-        nSrc.start();
+        const nb = this.ctx.createBuffer(1, this.ctx.sampleRate * 0.04, this.ctx.sampleRate);
+        const nd = nb.getChannelData(0); for (let j = 0; j < nd.length; j++) nd[j] = Math.random() * 2 - 1;
+        const ns = this.ctx.createBufferSource(); ns.buffer = nb;
+        const ng = this.ctx.createGain();
+        ng.gain.setValueAtTime(i % 8 === 0 ? 0.12 : 0.06, this.ctx.currentTime);
+        ng.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.04);
+        ns.connect(ng); ng.connect(this.musicGain); ns.start();
       }
       step++;
     }, s16 * 1000);
   }
-
-  stopMusic() {
-    this.musicPlaying = false;
-    if (this._musicInterval) clearInterval(this._musicInterval);
-  }
+  stopMusic() { this.musicPlaying = false; if (this._musicInterval) clearInterval(this._musicInterval); }
 }
-
 const audio = new ChipAudio();
 
 // ============================================================
-// TEXTURE GENERATION — NES Double Dragon style pixel art
+// 16-BIT TEXTURE GENERATION (SNES / Streets of Rage style)
 // ============================================================
 function genTextures(scene) {
+  // Helper: draw a shaded rect (3-shade for 16-bit feel)
+  function sRect(g, x, y, w, h, dark, mid, light) {
+    g.fillStyle(dark);  g.fillRect(x, y, w, h);
+    g.fillStyle(mid);   g.fillRect(x + 1, y + 1, w - 2, h - 2);
+    g.fillStyle(light); g.fillRect(x + 2, y + 1, w - 4, Math.floor(h / 3));
+  }
 
-  // --- PLAYER: Double Dragon Billy Lee style (32x36) ---
+  // --- PLAYER STAND (48x56) — muscular brawler, Streets of Rage style ---
   const pg = scene.make.graphics({ add: false });
-  // Skin colour head
-  pg.fillStyle(NES.skin);
-  pg.fillRect(10, 2, 12, 10); // face
-  pg.fillStyle(NES.darkSkin);
-  pg.fillRect(10, 10, 12, 2); // chin shadow
-  // Hair (spiky brown)
-  pg.fillStyle(NES.brown);
-  pg.fillRect(9, 0, 14, 5);
-  pg.fillRect(8, 1, 2, 3);
-  pg.fillRect(23, 1, 2, 4); // spikes
-  pg.fillRect(25, 2, 1, 2);
+  // Hair
+  sRect(pg, 15, 0, 18, 8, PAL.hairDark, PAL.hair, PAL.hairLight);
+  pg.fillStyle(PAL.hairDark); pg.fillRect(14, 2, 2, 4); pg.fillRect(33, 2, 3, 5); pg.fillRect(35, 3, 2, 3);
+  // Head/face
+  sRect(pg, 16, 6, 16, 14, PAL.skinDark, PAL.skin, PAL.skinLight);
   // Eyes
-  pg.fillStyle(NES.black);
-  pg.fillRect(13, 5, 2, 2);
-  pg.fillRect(18, 5, 2, 2);
-  // Blue sleeveless top (Double Dragon style)
-  pg.fillStyle(NES.darkBlue);
-  pg.fillRect(8, 12, 16, 10);
-  pg.fillStyle(NES.blue);
-  pg.fillRect(10, 13, 12, 8);
-  // Arms (skin)
-  pg.fillStyle(NES.skin);
-  pg.fillRect(4, 13, 5, 8);  // left arm
-  pg.fillRect(23, 13, 5, 8); // right arm
-  pg.fillStyle(NES.darkSkin);
-  pg.fillRect(4, 19, 5, 2);  // fists
-  pg.fillRect(23, 19, 5, 2);
+  pg.fillStyle(PAL.white); pg.fillRect(19, 11, 4, 3); pg.fillRect(26, 11, 4, 3);
+  pg.fillStyle(PAL.blueDark); pg.fillRect(20, 11, 2, 3); pg.fillRect(27, 11, 2, 3);
+  pg.fillStyle(PAL.black); pg.fillRect(21, 12, 1, 2); pg.fillRect(28, 12, 1, 2);
+  // Mouth
+  pg.fillStyle(PAL.skinDark); pg.fillRect(22, 16, 5, 1);
+  // Torso (blue sleeveless)
+  sRect(pg, 12, 20, 24, 16, PAL.blueDark, PAL.blue, PAL.blueLight);
+  // Chest detail
+  pg.fillStyle(PAL.blueBright); pg.fillRect(18, 22, 12, 2);
+  // Arms (bare skin — muscular)
+  sRect(pg, 4, 21, 9, 14, PAL.skinDark, PAL.skin, PAL.skinLight);
+  sRect(pg, 35, 21, 9, 14, PAL.skinDark, PAL.skin, PAL.skinLight);
+  // Fists
+  sRect(pg, 5, 33, 7, 5, PAL.skinDark, PAL.skin, PAL.skinLight);
+  sRect(pg, 36, 33, 7, 5, PAL.skinDark, PAL.skin, PAL.skinLight);
   // Belt
-  pg.fillStyle(NES.yellow);
-  pg.fillRect(9, 22, 14, 2);
-  // Pants (dark)
-  pg.fillStyle(NES.darkRed);
-  pg.fillRect(9, 24, 6, 8);  // left leg
-  pg.fillRect(17, 24, 6, 8); // right leg
+  sRect(pg, 13, 36, 22, 3, PAL.yellowDark, PAL.yellow, PAL.yellowLight);
+  pg.fillStyle(PAL.yellowBright); pg.fillRect(22, 36, 4, 3); // buckle
+  // Pants
+  sRect(pg, 13, 39, 10, 12, PAL.redDark, PAL.red, PAL.redLight);
+  sRect(pg, 25, 39, 10, 12, PAL.redDark, PAL.red, PAL.redLight);
   // Boots
-  pg.fillStyle(NES.brown);
-  pg.fillRect(8, 30, 7, 4);
-  pg.fillRect(17, 30, 7, 4);
-  // Clipboard in hand (the "fact-checker" touch)
-  pg.fillStyle(NES.white);
-  pg.fillRect(25, 15, 5, 6);
-  pg.fillStyle(NES.black);
-  pg.fillRect(26, 16, 3, 1);
-  pg.fillRect(26, 18, 3, 1);
-  pg.generateTexture('player', 32, 36);
+  sRect(pg, 12, 49, 11, 6, PAL.brownDark, PAL.brown, PAL.brownLight);
+  sRect(pg, 25, 49, 11, 6, PAL.brownDark, PAL.brown, PAL.brownLight);
+  // Clipboard
+  pg.fillStyle(PAL.white); pg.fillRect(40, 26, 7, 9);
+  pg.fillStyle(PAL.midGrey); pg.fillRect(41, 27, 5, 1); pg.fillRect(41, 29, 5, 1); pg.fillRect(41, 31, 5, 1);
+  pg.fillStyle(PAL.black); pg.fillRect(40, 25, 7, 2);
+  pg.generateTexture('player', 48, 56);
   pg.destroy();
 
-  // --- ENEMY SPRITES (NES style, ~24x32 each) ---
-  function drawNESEnemy(key, shirtColor, shirtHighlight, pantsColor, w, h, bulky) {
+  // --- PLAYER KICK POSE (48x56) ---
+  const pk = scene.make.graphics({ add: false });
+  // Same head/torso but leg extended
+  sRect(pk, 15, 0, 18, 8, PAL.hairDark, PAL.hair, PAL.hairLight);
+  pk.fillStyle(PAL.hairDark); pk.fillRect(14, 2, 2, 4); pk.fillRect(33, 2, 3, 5);
+  sRect(pk, 16, 6, 16, 14, PAL.skinDark, PAL.skin, PAL.skinLight);
+  pk.fillStyle(PAL.white); pk.fillRect(19, 11, 4, 3); pk.fillRect(26, 11, 4, 3);
+  pk.fillStyle(PAL.blueDark); pk.fillRect(20, 11, 2, 3); pk.fillRect(27, 11, 2, 3);
+  pk.fillStyle(PAL.black); pk.fillRect(21, 12, 1, 2); pk.fillRect(28, 12, 1, 2);
+  sRect(pk, 12, 20, 24, 16, PAL.blueDark, PAL.blue, PAL.blueLight);
+  sRect(pk, 4, 21, 9, 14, PAL.skinDark, PAL.skin, PAL.skinLight);
+  sRect(pk, 35, 21, 9, 14, PAL.skinDark, PAL.skin, PAL.skinLight);
+  sRect(pk, 5, 33, 7, 5, PAL.skinDark, PAL.skin, PAL.skinLight);
+  sRect(pk, 36, 33, 7, 5, PAL.skinDark, PAL.skin, PAL.skinLight);
+  sRect(pk, 13, 36, 22, 3, PAL.yellowDark, PAL.yellow, PAL.yellowLight);
+  // Standing leg (tucked)
+  sRect(pk, 13, 39, 10, 10, PAL.redDark, PAL.red, PAL.redLight);
+  sRect(pk, 12, 47, 11, 6, PAL.brownDark, PAL.brown, PAL.brownLight);
+  // Extended kick leg (horizontal)
+  sRect(pk, 25, 42, 18, 6, PAL.redDark, PAL.red, PAL.redLight);
+  sRect(pk, 41, 42, 7, 6, PAL.brownDark, PAL.brown, PAL.brownLight);
+  pk.generateTexture('player_kick', 48, 56);
+  pk.destroy();
+
+  // --- 16-BIT ENEMIES (36x48 each) ---
+  function draw16Enemy(key, shirtDk, shirtMd, shirtLt, pantsDk, pantsMd, w, h, bulky) {
     const g = scene.make.graphics({ add: false });
     const cx = Math.floor(w / 2);
+    const bw = bulky ? 24 : 18;
     // Head
-    g.fillStyle(NES.skin);
-    g.fillRect(cx - 5, 2, 10, 9);
-    g.fillStyle(NES.black);
-    g.fillRect(cx - 5, 0, 10, 3); // hair
-    g.fillRect(cx - 3, 5, 2, 2); // eyes
-    g.fillRect(cx + 1, 5, 2, 2);
+    sRect(g, cx - 7, 2, 14, 12, PAL.skinDark, PAL.skin, PAL.skinLight);
+    // Hair
+    g.fillStyle(PAL.black); g.fillRect(cx - 7, 0, 14, 4);
+    // Eyes
+    g.fillStyle(PAL.white); g.fillRect(cx - 4, 7, 3, 2); g.fillRect(cx + 2, 7, 3, 2);
+    g.fillStyle(PAL.black); g.fillRect(cx - 3, 7, 1, 2); g.fillRect(cx + 3, 7, 1, 2);
     // Body
-    const bw = bulky ? 16 : 12;
-    g.fillStyle(shirtColor);
-    g.fillRect(cx - bw/2, 11, bw, 10);
-    g.fillStyle(shirtHighlight);
-    g.fillRect(cx - bw/2 + 2, 12, bw - 4, 7);
+    sRect(g, cx - bw/2, 14, bw, 14, shirtDk, shirtMd, shirtLt);
     // Arms
-    g.fillStyle(NES.skin);
-    g.fillRect(cx - bw/2 - 3, 12, 4, 7);
-    g.fillRect(cx + bw/2 - 1, 12, 4, 7);
+    sRect(g, cx - bw/2 - 5, 15, 6, 12, PAL.skinDark, PAL.skin, PAL.skinLight);
+    sRect(g, cx + bw/2 - 1, 15, 6, 12, PAL.skinDark, PAL.skin, PAL.skinLight);
     // Belt
-    g.fillStyle(NES.darkGrey);
-    g.fillRect(cx - bw/2 + 1, 21, bw - 2, 2);
+    g.fillStyle(PAL.darkGrey); g.fillRect(cx - bw/2 + 1, 28, bw - 2, 2);
     // Pants
-    g.fillStyle(pantsColor);
-    g.fillRect(cx - 5, 23, 4, 7);
-    g.fillRect(cx + 1, 23, 4, 7);
+    sRect(g, cx - 7, 30, 6, 10, pantsDk, pantsMd, pantsMd);
+    sRect(g, cx + 1, 30, 6, 10, pantsDk, pantsMd, pantsMd);
     // Boots
-    g.fillStyle(NES.darkGrey);
-    g.fillRect(cx - 6, 29, 5, 3);
-    g.fillRect(cx + 1, 29, 5, 3);
+    sRect(g, cx - 8, 39, 7, 5, PAL.brownDark, PAL.brown, PAL.brownLight);
+    sRect(g, cx + 1, 39, 7, 5, PAL.brownDark, PAL.brown, PAL.brownLight);
     g.generateTexture(key, w, h);
     g.destroy();
   }
+  draw16Enemy('bruiser', PAL.redDark, PAL.red, PAL.redLight, PAL.darkGrey, PAL.midGrey, 36, 48, true);
+  draw16Enemy('columnist', PAL.brownDark, PAL.brown, PAL.tan, 0x183848, 0x2a5a6a, 32, 48, false);
+  draw16Enemy('shouter', PAL.purpleDark, PAL.purple, PAL.purpleLight, PAL.darkGrey, PAL.midGrey, 32, 48, false);
+  draw16Enemy('lobbyist', PAL.greenDark, PAL.green, PAL.greenLight, PAL.brownDark, PAL.brown, 32, 48, false);
 
-  drawNESEnemy('bruiser', NES.darkRed, NES.red, NES.darkGrey, 24, 32, true);
-  drawNESEnemy('columnist', NES.brown, NES.orange, NES.darkTeal, 22, 32, false);
-  drawNESEnemy('shouter', NES.purple, NES.magenta, NES.darkGrey, 22, 32, false);
-  drawNESEnemy('lobbyist', NES.darkGreen, NES.green, NES.brown, 22, 32, false);
-
-  // --- BOSS: Vladimir Impudent — stocky dictator parody (32x40) ---
+  // --- BOSS BODY (no pixel head — head will be photo) (48x60) ---
   const bg = scene.make.graphics({ add: false });
-  // Head (pale, stern)
-  bg.fillStyle(NES.skin);
-  bg.fillRect(9, 2, 14, 12);
-  bg.fillStyle(NES.darkSkin);
-  bg.fillRect(9, 12, 14, 2); // jaw
-  // Receding hairline
-  bg.fillStyle(NES.tan);
-  bg.fillRect(10, 0, 12, 3);
-  bg.fillRect(9, 1, 2, 2);
-  bg.fillRect(21, 1, 2, 2);
-  // Cold eyes
-  bg.fillStyle(NES.darkBlue);
-  bg.fillRect(12, 6, 3, 2);
-  bg.fillRect(18, 6, 3, 2);
-  bg.fillStyle(NES.black);
-  bg.fillRect(13, 6, 1, 2);
-  bg.fillRect(19, 6, 1, 2);
-  // Mouth (stern line)
-  bg.fillStyle(NES.darkSkin);
-  bg.fillRect(14, 10, 5, 1);
-  // Military-style jacket (dark green/olive)
-  bg.fillStyle(0x2a5a00);
-  bg.fillRect(5, 14, 22, 14);
-  bg.fillStyle(0x3a7a10);
-  bg.fillRect(8, 15, 16, 11);
-  // Medals / decorations
-  bg.fillStyle(NES.yellow);
-  bg.fillRect(9, 16, 3, 2);
-  bg.fillRect(9, 19, 3, 2);
-  bg.fillStyle(NES.red);
-  bg.fillRect(13, 16, 3, 2);
-  bg.fillRect(13, 19, 3, 2);
-  // Belt
-  bg.fillStyle(NES.brown);
-  bg.fillRect(7, 27, 18, 2);
-  bg.fillStyle(NES.yellow);
-  bg.fillRect(14, 27, 4, 2); // buckle
+  // Neck stub (so photo head sits on top)
+  bg.fillStyle(PAL.skin); bg.fillRect(18, 0, 12, 6);
+  // Military jacket
+  sRect(bg, 8, 6, 32, 22, PAL.oliveDark, PAL.olive, PAL.oliveLight);
+  // Epaulettes
+  sRect(bg, 6, 6, 6, 4, PAL.yellowDark, PAL.yellow, PAL.yellowLight);
+  sRect(bg, 36, 6, 6, 4, PAL.yellowDark, PAL.yellow, PAL.yellowLight);
+  // Medals
+  bg.fillStyle(PAL.yellow); bg.fillRect(12, 10, 4, 3); bg.fillRect(12, 14, 4, 3);
+  bg.fillStyle(PAL.red); bg.fillRect(18, 10, 4, 3); bg.fillRect(18, 14, 4, 3);
+  bg.fillStyle(PAL.white); bg.fillRect(24, 10, 4, 3);
   // Arms
-  bg.fillStyle(0x2a5a00);
-  bg.fillRect(2, 15, 4, 10);
-  bg.fillRect(26, 15, 4, 10);
-  bg.fillStyle(NES.skin);
-  bg.fillRect(2, 23, 4, 3); // fists
-  bg.fillRect(26, 23, 4, 3);
+  sRect(bg, 2, 8, 7, 16, PAL.oliveDark, PAL.olive, PAL.oliveLight);
+  sRect(bg, 39, 8, 7, 16, PAL.oliveDark, PAL.olive, PAL.oliveLight);
+  bg.fillStyle(PAL.skin); bg.fillRect(2, 22, 7, 4); bg.fillRect(39, 22, 7, 4);
+  // Belt
+  sRect(bg, 9, 28, 30, 3, PAL.brownDark, PAL.brown, PAL.brownLight);
+  bg.fillStyle(PAL.yellowLight); bg.fillRect(21, 28, 6, 3);
   // Pants
-  bg.fillStyle(NES.darkGrey);
-  bg.fillRect(8, 29, 6, 8);
-  bg.fillRect(18, 29, 6, 8);
+  sRect(bg, 10, 31, 12, 16, PAL.darkGrey, PAL.midGrey, PAL.midGrey);
+  sRect(bg, 26, 31, 12, 16, PAL.darkGrey, PAL.midGrey, PAL.midGrey);
   // Boots
-  bg.fillStyle(NES.black);
-  bg.fillRect(7, 35, 7, 4);
-  bg.fillRect(18, 35, 7, 4);
-  bg.generateTexture('boss', 32, 40);
+  sRect(bg, 9, 46, 13, 7, PAL.black, 0x1a1a1a, 0x2a2a2a);
+  sRect(bg, 26, 46, 13, 7, PAL.black, 0x1a1a1a, 0x2a2a2a);
+  bg.generateTexture('boss_body', 48, 54);
   bg.destroy();
 
   // --- Projectile bubble ---
   const pb = scene.make.graphics({ add: false });
-  pb.fillStyle(NES.white);
-  pb.fillRoundedRect(0, 0, 28, 12, 4);
-  pb.fillStyle(NES.midGrey);
-  pb.fillRoundedRect(1, 1, 26, 10, 3);
-  pb.fillStyle(NES.white);
-  pb.fillRoundedRect(2, 2, 24, 8, 2);
-  pb.generateTexture('bubble', 28, 12);
+  pb.fillStyle(PAL.white); pb.fillRoundedRect(0, 0, 32, 14, 5);
+  pb.fillStyle(PAL.ltGrey); pb.fillRoundedRect(1, 1, 30, 12, 4);
+  pb.fillStyle(PAL.white); pb.fillRoundedRect(2, 2, 28, 10, 3);
+  pb.generateTexture('bubble', 32, 14);
   pb.destroy();
 
   // --- Doubt cloud ---
   const dc = scene.make.graphics({ add: false });
-  dc.fillStyle(0x666688);
-  dc.fillCircle(20, 18, 18);
-  dc.fillCircle(35, 14, 14);
-  dc.fillCircle(10, 14, 12);
-  dc.fillCircle(28, 10, 10);
-  dc.generateTexture('doubtcloud', 50, 36);
+  dc.fillStyle(0x556688); dc.fillCircle(24, 20, 20); dc.fillCircle(40, 16, 16);
+  dc.fillCircle(12, 16, 14); dc.fillCircle(32, 10, 12);
+  dc.generateTexture('doubtcloud', 56, 40);
   dc.destroy();
 
-  // --- Hit spark (NES style 4-point star) ---
+  // --- Hit spark (16-bit style — multi-colour starburst) ---
   const sp = scene.make.graphics({ add: false });
-  sp.fillStyle(NES.white);
-  sp.fillRect(5, 0, 2, 12);
-  sp.fillRect(0, 5, 12, 2);
-  sp.fillStyle(NES.yellow);
-  sp.fillRect(4, 1, 4, 2);
-  sp.fillRect(4, 9, 4, 2);
-  sp.fillRect(1, 4, 2, 4);
-  sp.fillRect(9, 4, 2, 4);
-  sp.fillStyle(NES.red);
-  sp.fillRect(5, 5, 2, 2);
-  sp.generateTexture('spark', 12, 12);
+  sp.fillStyle(PAL.white); sp.fillRect(7, 0, 2, 16); sp.fillRect(0, 7, 16, 2);
+  sp.fillStyle(PAL.yellowLight); sp.fillRect(6, 1, 4, 3); sp.fillRect(6, 12, 4, 3);
+  sp.fillRect(1, 6, 3, 4); sp.fillRect(12, 6, 3, 4);
+  sp.fillStyle(PAL.yellowDark); sp.fillRect(2, 2, 3, 3); sp.fillRect(11, 11, 3, 3);
+  sp.fillRect(11, 2, 3, 3); sp.fillRect(2, 11, 3, 3);
+  sp.fillStyle(PAL.red); sp.fillRect(7, 7, 2, 2);
+  sp.generateTexture('spark', 16, 16);
   sp.destroy();
 
   // --- Confetti ---
   const cf = scene.make.graphics({ add: false });
-  cf.fillStyle(NES.yellow);
-  cf.fillRect(0, 0, 3, 3);
-  cf.generateTexture('confetti', 3, 3);
+  cf.fillStyle(PAL.yellow); cf.fillRect(0, 0, 4, 4);
+  cf.generateTexture('confetti', 4, 4);
   cf.destroy();
 }
 
 // ============================================================
-// ENEMY LOGO BADGE — drawn as clear text plates above heads
+// ENEMY LOGO BADGE
 // ============================================================
 function createLogoBadge(scene, x, y, type) {
   const name = CONFIG.enemyNames[type] || type;
-  // Coloured background plate matching enemy archetype
   const bgColors = { bruiser: '#cc2222', columnist: '#cc8800', shouter: '#8822aa', lobbyist: '#228822' };
-  const badge = scene.add.text(x, y, ` ${name} `, {
-    fontSize: '7px',
-    fontFamily: 'Arial, Helvetica, sans-serif',
-    fontStyle: 'bold',
-    color: '#ffffff',
-    backgroundColor: bgColors[type] || '#444444',
-    padding: { x: 3, y: 2 },
+  return scene.add.text(x, y, ` ${name} `, {
+    fontSize: '7px', fontFamily: 'Arial, Helvetica, sans-serif', fontStyle: 'bold',
+    color: '#ffffff', backgroundColor: bgColors[type] || '#444444', padding: { x: 3, y: 2 },
   }).setOrigin(0.5).setDepth(30);
-  return badge;
 }
 
 // ============================================================
-// MAIN GAME SCENE
+// MAIN SCENE
 // ============================================================
 class GameScene extends Phaser.Scene {
   constructor() { super('GameScene'); }
 
+  preload() {
+    // Load Putin head photo (crossOrigin handled by Phaser)
+    this.load.image('putin_head', CONFIG.bossHeadURL);
+    this.load.on('loaderror', () => { this._bossHeadFailed = true; });
+  }
+
   create() {
     this.gameState = 'title';
-    this.gameTime = 0;
-    this.score = 0;
+    this.gameTime = 0; this.score = 0;
     this.stats = { combos: 0, bubblesPopped: 0, mythsBonked: 0 };
-    this.waveIndex = 0;
-    this.enemies = [];
-    this.projectiles = [];
-    this.doubtClouds = [];
-    this.tutorialTimer = 0;
-    this.shakeTimer = 0;
-    this.cameraOffsetX = 0;
+    this.waveIndex = 0; this.enemies = []; this.projectiles = []; this.doubtClouds = [];
+    this.tutorialTimer = 0; this.shakeTimer = 0; this.cameraOffsetX = 0;
 
     genTextures(this);
     audio.init();
-
     this.drawBackground();
     this.player = this.createPlayer();
     this.createUI();
 
-    // Controls
     this.cursors = this.input.keyboard.createCursorKeys();
     this.keys = {
       w: this.input.keyboard.addKey('W'), a: this.input.keyboard.addKey('A'),
@@ -509,741 +370,515 @@ class GameScene extends Phaser.Scene {
       shift: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SHIFT),
     };
 
-    // Attack state
-    this.attackTimer = 0;
-    this.comboCount = 0;
-    this.comboWindow = 0;
-    this.chargeTimer = 0;
-    this.isCharging = false;
-    this.isBlocking = false;
-    this.attackCooldown = 0;
-    this.playerHitCooldown = 0;
-    this.jumpVel = 0;
-    this.isJumping = false;
-    this.playerBaseY = GROUND_Y;
+    this.attackTimer = 0; this.comboCount = 0; this.comboWindow = 0;
+    this.chargeTimer = 0; this.isCharging = false; this.isBlocking = false;
+    this.attackCooldown = 0; this.playerHitCooldown = 0;
+    this.jumpVel = 0; this.isJumping = false; this.playerBaseY = GROUND_Y;
+    this.isMoving = false; // track horizontal movement
 
-    // Boss
-    this.boss = null;
-    this.bossShoutTimer = 0;
-    this.bossShoutText = null;
-    this.bossAttackTimer = 0;
-    this.bossPhase = 1;
+    this.boss = null; this.bossShoutTimer = 0; this.bossShoutText = null;
+    this.bossAttackTimer = 0; this.bossPhase = 1; this.bossHead = null;
 
-    // Title screen — NES Double Dragon title style
-    this.titleBg = this.add.rectangle(W / 2, H / 2, W, H, NES.black).setDepth(99);
-    this.titleText = this.add.text(W / 2, 35, 'DISINFORMATION\n      FIGHTER', {
-      fontSize: '16px', fontFamily: 'monospace', color: '#f83800', align: 'center',
-      stroke: '#000000', strokeThickness: 2
+    // Title screen
+    this.titleBg = this.add.rectangle(W / 2, H / 2, W, H, PAL.black).setDepth(99);
+    this.titleText = this.add.text(W / 2, 30, 'DISINFORMATION\n      FIGHTER', {
+      fontSize: '16px', fontFamily: 'monospace', color: '#f04040', align: 'center',
+      stroke: '#401010', strokeThickness: 3
     }).setOrigin(0.5).setDepth(100);
-    this.titleSub = this.add.text(W / 2, 85, '— FIGHT MISINFORMATION —', {
-      fontSize: '7px', fontFamily: 'monospace', color: '#fce4a0'
+    this.titleSub = this.add.text(W / 2, 80, '— FIGHT MISINFORMATION —', {
+      fontSize: '7px', fontFamily: 'monospace', color: '#f8e060'
     }).setOrigin(0.5).setDepth(100);
-    this.titleStart = this.add.text(W / 2, 120, 'PRESS  J  TO START', {
+    this.titleStart = this.add.text(W / 2, 115, 'PRESS  J  TO START', {
       fontSize: '8px', fontFamily: 'monospace', color: '#fcfcfc'
     }).setOrigin(0.5).setDepth(100);
-    this.titleCredits = this.add.text(W / 2, 155, '© 2026 FACT-CHECKER STUDIOS', {
-      fontSize: '5px', fontFamily: 'monospace', color: '#747474'
+    this.titleCredits = this.add.text(W / 2, 150, '© 2026 FACT-CHECKER STUDIOS', {
+      fontSize: '5px', fontFamily: 'monospace', color: '#606080'
     }).setOrigin(0.5).setDepth(100);
     this.titleFlash = 0;
 
-    // Tutorial overlay
-    this.tutorialBg = this.add.rectangle(W / 2, H / 2, W - 16, H - 16, 0x000000, 0.92)
-      .setDepth(90).setVisible(false).setScrollFactor(0);
-    this.tutorialText = this.add.text(W / 2, H / 2, '', {
-      fontSize: '7px', fontFamily: 'monospace', color: '#fce4a0', align: 'center', lineSpacing: 5
+    this.tutorialBg = this.add.rectangle(W/2, H/2, W-16, H-16, 0x000000, 0.92).setDepth(90).setVisible(false).setScrollFactor(0);
+    this.tutorialText = this.add.text(W/2, H/2, '', {
+      fontSize: '7px', fontFamily: 'monospace', color: '#f8e060', align: 'center', lineSpacing: 5
     }).setOrigin(0.5).setDepth(91).setVisible(false).setScrollFactor(0);
-
-    // End screen
-    this.endBg = this.add.rectangle(W / 2, H / 2, W, H, 0x000000, 0.92)
-      .setDepth(100).setVisible(false).setScrollFactor(0);
-    this.endText = this.add.text(W / 2, H / 2, '', {
+    this.endBg = this.add.rectangle(W/2, H/2, W, H, 0x000000, 0.92).setDepth(100).setVisible(false).setScrollFactor(0);
+    this.endText = this.add.text(W/2, H/2, '', {
       fontSize: '8px', fontFamily: 'monospace', color: '#ffffff', align: 'center', lineSpacing: 5
     }).setOrigin(0.5).setDepth(101).setVisible(false).setScrollFactor(0);
   }
 
-  // --- NES Double Dragon BACKGROUND ---
+  // --- 16-BIT BACKGROUND ---
   drawBackground() {
-    // Dark night sky
-    this.add.rectangle(W * 2.5, 50, W * 8, 100, 0x0c0820).setDepth(-10).setScrollFactor(0.05);
-
-    // Stars
-    for (let i = 0; i < 30; i++) {
-      this.add.rectangle(Math.random() * W * 6, 5 + Math.random() * 40, 1, 1, NES.white)
-        .setDepth(-9).setScrollFactor(0.05);
+    // Gradient night sky
+    for (let i = 0; i < 100; i++) {
+      const t = i / 100;
+      const r = Math.floor(8 + t * 15), g = Math.floor(6 + t * 10), b = Math.floor(30 + t * 25);
+      this.add.rectangle(W * 2.5, i, W * 8, 1, Phaser.Display.Color.GetColor(r, g, b)).setDepth(-10).setScrollFactor(0.05);
     }
-
-    // Distant cityline silhouette (parallax far)
-    for (let i = 0; i < 30; i++) {
-      const bw = 15 + Math.random() * 25;
-      const bh = 15 + Math.random() * 35;
-      const bx = i * 55;
-      this.add.rectangle(bx, 95 - bh/2, bw, bh, 0x101030).setDepth(-8).setScrollFactor(0.15);
+    // Stars (twinkling via different sizes)
+    for (let i = 0; i < 40; i++) {
+      const s = Math.random() > 0.7 ? 2 : 1;
+      this.add.rectangle(Math.random() * W * 6, 3 + Math.random() * 45, s, s, PAL.white)
+        .setDepth(-9).setScrollFactor(0.05).setAlpha(0.5 + Math.random() * 0.5);
     }
-
-    // Mid-ground brick buildings
-    for (let i = 0; i < 25; i++) {
-      const bw = 25 + Math.random() * 35;
-      const bh = 35 + Math.random() * 45;
-      const bx = i * 65 - 20;
-      const wallColor = [0x7c3820, 0x683018, 0x5c2810][Math.floor(Math.random() * 3)];
-      this.add.rectangle(bx, LANE_TOP - bh/2 + 8, bw, bh, wallColor).setDepth(-6).setScrollFactor(0.35);
-      // Brick pattern
-      for (let row = 0; row < bh - 4; row += 5) {
-        const offset = (Math.floor(row / 5) % 2) * 4;
-        for (let col = 2 + offset; col < bw - 2; col += 8) {
-          this.add.rectangle(bx - bw/2 + col + 3, LANE_TOP - bh + 8 + row + 4, 6, 3, wallColor + 0x111111)
+    // Distant city silhouettes (far parallax)
+    for (let i = 0; i < 35; i++) {
+      const bw = 18 + Math.random() * 30, bh = 20 + Math.random() * 40;
+      this.add.rectangle(i * 50, 95 - bh/2, bw, bh, 0x0c1028).setDepth(-8).setScrollFactor(0.12);
+      // Tiny lit windows on distant buildings
+      for (let wy = 4; wy < bh - 6; wy += 8) {
+        for (let wx = 3; wx < bw - 3; wx += 6) {
+          if (Math.random() > 0.5)
+            this.add.rectangle(i*50 - bw/2 + wx, 95 - bh + wy + 2, 2, 3, 0xf8d060)
+              .setDepth(-7).setScrollFactor(0.12).setAlpha(0.6);
+        }
+      }
+    }
+    // Brick buildings (mid-ground, detailed)
+    for (let i = 0; i < 28; i++) {
+      const bw = 30 + Math.random() * 40, bh = 40 + Math.random() * 50;
+      const bx = i * 60 - 30;
+      const wc = [0x7c3828, 0x6c3020, 0x5c2818, 0x8c4030][Math.floor(Math.random() * 4)];
+      this.add.rectangle(bx, LANE_TOP - bh/2 + 8, bw, bh, wc).setDepth(-6).setScrollFactor(0.35);
+      // Bricks (offset pattern)
+      for (let row = 0; row < bh - 4; row += 6) {
+        const off = (Math.floor(row / 6) % 2) * 5;
+        for (let col = off; col < bw - 2; col += 10) {
+          this.add.rectangle(bx - bw/2 + col + 4, LANE_TOP - bh + 8 + row + 5, 8, 4, wc + 0x0a0a0a)
+            .setDepth(-5).setScrollFactor(0.35);
+          // Mortar lines
+          this.add.rectangle(bx - bw/2 + col + 4, LANE_TOP - bh + 8 + row + 2, 8, 1, wc - 0x0a0a0a)
             .setDepth(-5).setScrollFactor(0.35);
         }
       }
-      // Windows (yellow glow or dark)
-      for (let wy = 0; wy < bh - 12; wy += 12) {
-        for (let wx = 5; wx < bw - 5; wx += 10) {
-          const lit = Math.random() > 0.35;
-          this.add.rectangle(bx - bw/2 + wx + 3, LANE_TOP - bh + 8 + wy + 7, 5, 6,
-            lit ? 0xf8d878 : 0x302818).setDepth(-4).setScrollFactor(0.35);
+      // Windows (16-bit: glass reflection effect)
+      for (let wy = 0; wy < bh - 14; wy += 14) {
+        for (let wx = 6; wx < bw - 6; wx += 12) {
+          const lit = Math.random() > 0.3;
+          const wx2 = bx - bw/2 + wx + 4, wy2 = LANE_TOP - bh + 8 + wy + 8;
+          this.add.rectangle(wx2, wy2, 7, 8, lit ? 0xf8d060 : 0x201818).setDepth(-4).setScrollFactor(0.35);
+          if (lit) this.add.rectangle(wx2 - 1, wy2 - 2, 2, 3, 0xf8f0a0).setDepth(-4).setScrollFactor(0.35); // highlight
         }
       }
     }
-
-    // Street / ground (concrete grey with lane markings)
-    this.add.rectangle(W * 3, LANE_TOP + 40, W * 8, 90, 0x484858).setDepth(-3).setScrollFactor(1);
-    // Kerb
-    this.add.rectangle(W * 3, LANE_TOP + 2, W * 8, 4, 0x888898).setDepth(-2).setScrollFactor(1);
+    // Neon signs (16-bit staple)
+    const signs = ['BAR', 'DINER', 'NEWS', 'HOTEL', '24H'];
+    for (let i = 0; i < 5; i++) {
+      this.add.text(80 + i * 280, LANE_TOP - 20, signs[i], {
+        fontSize: '6px', fontFamily: 'monospace', color: i % 2 === 0 ? '#ff4488' : '#44ff88',
+        stroke: '#000000', strokeThickness: 1
+      }).setDepth(-3).setScrollFactor(0.35);
+    }
+    // Street
+    this.add.rectangle(W * 3, LANE_TOP + 40, W * 8, 90, 0x3a3a48).setDepth(-3).setScrollFactor(1);
+    // Sidewalk/kerb
+    this.add.rectangle(W * 3, LANE_TOP + 2, W * 8, 5, 0x686878).setDepth(-2).setScrollFactor(1);
+    this.add.rectangle(W * 3, LANE_TOP + 5, W * 8, 2, 0x585868).setDepth(-2).setScrollFactor(1);
     // Road markings
     for (let i = 0; i < 60; i++) {
-      this.add.rectangle(i * 35, GROUND_Y + 8, 12, 2, 0x888844).setDepth(-1).setScrollFactor(1);
+      this.add.rectangle(i * 35, GROUND_Y + 10, 14, 2, 0x707048).setDepth(-1).setScrollFactor(1);
     }
-
-    // Scattered props: trash cans, crates (Double Dragon staple)
+    // Props
     for (let i = 0; i < 12; i++) {
-      const px = 80 + i * 120 + Math.random() * 40;
-      const py = LANE_TOP + 8 + Math.random() * 10;
+      const px = 80 + i * 120 + Math.random() * 40, py = LANE_TOP + 8 + Math.random() * 8;
       if (Math.random() > 0.5) {
-        // Trash can
-        this.add.rectangle(px, py, 8, 12, 0x606060).setDepth(-1).setScrollFactor(1);
-        this.add.rectangle(px, py - 7, 10, 2, 0x707070).setDepth(-1).setScrollFactor(1);
+        sRect16(this, px-4, py-6, 8, 12, 0x505050, 0x686868, 0x808080);
+        this.add.rectangle(px, py - 7, 10, 2, 0x787878).setDepth(-1).setScrollFactor(1);
       } else {
-        // Crate
-        this.add.rectangle(px, py, 10, 10, 0x8c6c30).setDepth(-1).setScrollFactor(1);
-        this.add.rectangle(px, py, 8, 1, 0x6c4c20).setDepth(-1).setScrollFactor(1);
-        this.add.rectangle(px, py - 3, 1, 8, 0x6c4c20).setDepth(-1).setScrollFactor(1);
+        sRect16(this, px-5, py-5, 10, 10, 0x6c4c20, 0x8c6c30, 0xa88840);
+        this.add.rectangle(px, py, 8, 1, 0x504020).setDepth(-1).setScrollFactor(1);
       }
     }
   }
 
-  // --- PLAYER ---
   createPlayer() {
     const p = this.add.sprite(40, GROUND_Y, 'player').setDepth(10);
-    p.hp = 100;
-    p.maxHp = 100;
-    p.damageMult = 1;
+    p.hp = 100; p.maxHp = 100; p.damageMult = 1;
     return p;
   }
 
-  // --- UI (NES style) ---
   createUI() {
-    // Player HP
-    this.add.rectangle(4, 3, 62, 8, NES.black).setOrigin(0).setScrollFactor(0).setDepth(50);
-    this.hpBar = this.add.rectangle(5, 4, 60, 6, NES.green).setOrigin(0).setScrollFactor(0).setDepth(51);
-    this.hpLabel = this.add.text(5, 12, 'FACT-CHECKER', {
-      fontSize: '5px', fontFamily: 'monospace', color: '#3cbcfc'
+    this.add.rectangle(4, 3, 64, 9, PAL.black).setOrigin(0).setScrollFactor(0).setDepth(50);
+    this.hpBar = this.add.rectangle(5, 4, 62, 7, PAL.hpGreen).setOrigin(0).setScrollFactor(0).setDepth(51);
+    this.hpLabel = this.add.text(5, 14, 'FACT-CHECKER', {
+      fontSize: '5px', fontFamily: 'monospace', color: '#5888f8'
     }).setScrollFactor(0).setDepth(51);
-
-    // Boss HP (hidden)
-    this.add.rectangle(W - 66, 3, 62, 8, NES.black).setOrigin(0).setScrollFactor(0).setDepth(50).setVisible(false);
-    this.bossHpBg = this.add.rectangle(W - 66, 3, 62, 8, NES.black).setOrigin(0).setScrollFactor(0).setDepth(50).setVisible(false);
-    this.bossHpBar = this.add.rectangle(W - 65, 4, 60, 6, NES.red).setOrigin(0).setScrollFactor(0).setDepth(51).setVisible(false);
-    this.bossHpLabel = this.add.text(W - 65, 12, '', {
-      fontSize: '5px', fontFamily: 'monospace', color: '#f83800'
+    this.bossHpBg = this.add.rectangle(W-68, 3, 64, 9, PAL.black).setOrigin(0).setScrollFactor(0).setDepth(50).setVisible(false);
+    this.bossHpBar = this.add.rectangle(W-67, 4, 62, 7, PAL.hpRed).setOrigin(0).setScrollFactor(0).setDepth(51).setVisible(false);
+    this.bossHpLabel = this.add.text(W-67, 14, '', {
+      fontSize: '5px', fontFamily: 'monospace', color: '#f04040'
     }).setScrollFactor(0).setDepth(51).setVisible(false);
-
-    // Game title (persistent during play)
-    this.add.text(W / 2, 2, 'DISINFORMATION FIGHTER', {
-      fontSize: '5px', fontFamily: 'monospace', color: '#f83800'
+    this.add.text(W/2, 2, 'DISINFORMATION FIGHTER', {
+      fontSize: '5px', fontFamily: 'monospace', color: '#f04040'
     }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(51);
-
-    // Score + timer (top center, NES style)
-    this.scoreText = this.add.text(W / 2, 9, 'SCORE 0', {
+    this.scoreText = this.add.text(W/2, 9, 'SCORE 0', {
       fontSize: '6px', fontFamily: 'monospace', color: '#fcfcfc'
     }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(51);
-    this.timerText = this.add.text(W / 2, 16, '', {
-      fontSize: '5px', fontFamily: 'monospace', color: '#bcbcbc'
+    this.timerText = this.add.text(W/2, 17, '', {
+      fontSize: '5px', fontFamily: 'monospace', color: '#c8c8d8'
     }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(51);
   }
 
-  // --- ENEMY SPAWNING ---
   spawnEnemy(type, x, y) {
     const e = this.add.sprite(x, y, type).setDepth(9);
-    e.enemyType = type;
-    e.hp = type === 'bruiser' ? 30 : 20;
-    e.maxHp = e.hp;
+    e.enemyType = type; e.hp = type === 'bruiser' ? 30 : 20; e.maxHp = e.hp;
     e.speed = type === 'bruiser' ? 0.7 : type === 'shouter' ? 0.35 : 0.45;
-    e.attackCooldown = 0;
-    e.attackRange = type === 'shouter' ? 100 : type === 'columnist' ? 50 : 22;
-    e.stunTimer = 0;
-    e.hitTimer = 0;
-    e.dir = -1;
-
-    // Logo badge (clear, non-8bit text plate)
-    e.logoBadge = createLogoBadge(this, x, y - 20, type);
-
-    // HP bar
-    e.hpBg = this.add.rectangle(x - 10, y - 14, 20, 3, NES.black).setDepth(29);
-    e.hpFill = this.add.rectangle(x - 10, y - 14, 20, 3, NES.red).setOrigin(0, 0.5).setDepth(29);
-
+    e.attackCooldown = 0; e.attackRange = type === 'shouter' ? 100 : type === 'columnist' ? 50 : 24;
+    e.stunTimer = 0; e.hitTimer = 0; e.dir = -1;
+    e.logoBadge = createLogoBadge(this, x, y - 28, type);
+    e.hpBg = this.add.rectangle(x - 12, y - 20, 24, 3, PAL.black).setDepth(29);
+    e.hpFill = this.add.rectangle(x - 12, y - 20, 24, 3, PAL.hpRed).setOrigin(0, 0.5).setDepth(29);
     this.enemies.push(e);
     return e;
   }
-
-  spawnWave(waveDef) {
-    const camX = this.cameras.main.scrollX;
-    waveDef.enemies.forEach(eg => {
-      for (let i = 0; i < eg.count; i++) {
-        const x = camX + W + 20 + Math.random() * 50;
-        const y = LANE_TOP + 25 + Math.random() * (LANE_BOT - LANE_TOP - 25);
-        this.spawnEnemy(eg.type, x, y);
-      }
+  spawnWave(w) {
+    const cx = this.cameras.main.scrollX;
+    w.enemies.forEach(eg => { for (let i = 0; i < eg.count; i++)
+      this.spawnEnemy(eg.type, cx + W + 20 + Math.random() * 50, LANE_TOP + 25 + Math.random() * (LANE_BOT - LANE_TOP - 25));
     });
   }
 
-  // --- BOSS ---
+  // --- BOSS (with photo head) ---
   spawnBoss() {
-    const camX = this.cameras.main.scrollX;
-    this.boss = this.add.sprite(camX + W - 30, GROUND_Y - 5, 'boss').setDepth(10);
-    this.boss.hp = 100;
-    this.boss.maxHp = 100;
-    this.boss.stunTimer = 0;
-    this.boss.hitTimer = 0;
-    this.boss.attackCooldown = 60;
-    this.boss.dir = -1;
-    this.boss.dashTimer = 0;
-    this.boss.windupTimer = 0;
-    this.bossPhase = 1;
-    this.bossShoutTimer = 0;
+    const cx = this.cameras.main.scrollX;
+    this.boss = this.add.sprite(cx + W - 40, GROUND_Y - 5, 'boss_body').setDepth(10);
+    this.boss.hp = 100; this.boss.maxHp = 100; this.boss.stunTimer = 0; this.boss.hitTimer = 0;
+    this.boss.attackCooldown = 60; this.boss.dir = -1; this.boss.dashTimer = 0;
+    this.bossPhase = 1; this.bossShoutTimer = 0;
 
-    this.bossHpBg.setVisible(true);
-    this.bossHpBar.setVisible(true);
+    // Photo head (loaded in preload)
+    if (this.textures.exists('putin_head') && !this._bossHeadFailed) {
+      this.bossHead = this.add.image(this.boss.x, this.boss.y - 30, 'putin_head').setDepth(11);
+      // Scale the photo down to fit as a head (~20x24 px)
+      const tex = this.textures.get('putin_head').getSourceImage();
+      const scale = 22 / Math.max(tex.width, tex.height);
+      this.bossHead.setScale(scale);
+    } else {
+      // Fallback: pixel head
+      this.bossHead = this.add.rectangle(this.boss.x, this.boss.y - 26, 16, 16, PAL.skin).setDepth(11);
+    }
+
+    this.bossHpBg.setVisible(true); this.bossHpBar.setVisible(true);
     this.bossHpLabel.setText('VLAD IMPUDENT').setVisible(true);
-
-    this.bossShoutText = this.add.text(this.boss.x, this.boss.y - 30, '', {
-      fontSize: '6px', fontFamily: 'monospace', color: '#f8d878', backgroundColor: '#200000dd',
-      padding: { x: 3, y: 2 }, wordWrap: { width: 90 }
+    this.bossShoutText = this.add.text(this.boss.x, this.boss.y - 44, '', {
+      fontSize: '6px', fontFamily: 'monospace', color: '#f8e060', backgroundColor: '#200000dd',
+      padding: { x: 3, y: 2 }, wordWrap: { width: 100 }
     }).setOrigin(0.5).setDepth(20);
     this.showBossShout();
-
-    // Switch to boss music
-    audio.stopMusic();
-    audio.startMusic('boss');
+    audio.stopMusic(); audio.startMusic('boss');
   }
 
   getBossLines() {
-    const lines = [...CONFIG.bossLinesParody];
-    if (CONFIG.bossLinesOptionalRealQuotes.length > 0) lines.push(...CONFIG.bossLinesOptionalRealQuotes);
-    return lines;
+    const l = [...CONFIG.bossLinesParody];
+    if (CONFIG.bossLinesOptionalRealQuotes.length > 0) l.push(...CONFIG.bossLinesOptionalRealQuotes);
+    return l;
   }
-
   showBossShout() {
     if (!this.boss || !this.bossShoutText) return;
-    const lines = this.getBossLines();
-    this.bossShoutText.setText(lines[Math.floor(Math.random() * lines.length)]);
+    const l = this.getBossLines();
+    this.bossShoutText.setText(l[Math.floor(Math.random() * l.length)]);
     this.bossShoutTimer = 480;
   }
 
-  // --- PROJECTILE ---
   spawnProjectile(x, y, vx, vy, fromBoss = false) {
     const p = this.add.sprite(x, y, 'bubble').setDepth(11);
     p.vx = vx; p.vy = vy; p.fromBoss = fromBoss; p.life = 300;
-    const txt = CONFIG.bubbleTexts[Math.floor(Math.random() * CONFIG.bubbleTexts.length)];
-    p.label = this.add.text(x, y, txt, {
+    p.label = this.add.text(x, y, CONFIG.bubbleTexts[Math.floor(Math.random() * CONFIG.bubbleTexts.length)], {
       fontSize: '5px', fontFamily: 'monospace', color: '#200000', fontStyle: 'bold'
     }).setOrigin(0.5).setDepth(12);
     this.projectiles.push(p);
-    return p;
   }
-
-  spawnDoubtCloud(x, y) {
-    const c = this.add.sprite(x, y, 'doubtcloud').setDepth(8).setAlpha(0.5);
-    c.life = 300;
-    this.doubtClouds.push(c);
-    return c;
-  }
-
+  spawnDoubtCloud(x, y) { const c = this.add.sprite(x, y, 'doubtcloud').setDepth(8).setAlpha(0.5); c.life = 300; this.doubtClouds.push(c); }
   spawnSpark(x, y) {
     const s = this.add.sprite(x, y, 'spark').setDepth(15);
-    this.tweens.add({ targets: s, alpha: 0, scaleX: 1.8, scaleY: 1.8, duration: 180, onComplete: () => s.destroy() });
+    this.tweens.add({ targets: s, alpha: 0, scaleX: 2, scaleY: 2, duration: 200, onComplete: () => s.destroy() });
   }
-
   spawnConfetti(x, y) {
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < 12; i++) {
       const c = this.add.sprite(x, y, 'confetti').setDepth(15).setTint(
-        [NES.red, NES.green, NES.blue, NES.yellow, NES.pink][Math.floor(Math.random() * 5)]
+        [PAL.red, PAL.green, PAL.blue, PAL.yellow, PAL.purpleLight][Math.floor(Math.random() * 5)]
       );
-      this.tweens.add({
-        targets: c, x: x + (Math.random() - 0.5) * 50, y: y - 15 - Math.random() * 35,
-        alpha: 0, duration: 500 + Math.random() * 300, onComplete: () => c.destroy()
-      });
+      this.tweens.add({ targets: c, x: x + (Math.random()-0.5)*60, y: y-20-Math.random()*40,
+        alpha: 0, duration: 600+Math.random()*300, onComplete: () => c.destroy() });
     }
   }
-
   getPlayerDamage(base) {
     let d = base * this.player.damageMult;
-    for (const c of this.doubtClouds) {
-      if (c.active && Phaser.Math.Distance.Between(this.player.x, this.player.y, c.x, c.y) < 30) {
-        d *= 0.5; break;
-      }
-    }
+    for (const c of this.doubtClouds) if (c.active && Phaser.Math.Distance.Between(this.player.x, this.player.y, c.x, c.y) < 35) { d *= 0.5; break; }
     return Math.max(1, Math.floor(d));
   }
 
   // --- UPDATE ---
   update(time, delta) {
     const dt = delta / 1000;
+    if (this.shakeTimer > 0) { this.shakeTimer--; this.cameras.main.setScroll(this.cameras.main.scrollX + (Math.random()-0.5)*2, (Math.random()-0.5)*2); }
 
-    if (this.shakeTimer > 0) {
-      this.shakeTimer--;
-      this.cameras.main.setScroll(
-        this.cameras.main.scrollX + (Math.random() - 0.5) * 2,
-        (Math.random() - 0.5) * 2
-      );
-    }
-
-    // TITLE
     if (this.gameState === 'title') {
       this.titleFlash += dt;
       this.titleStart.setAlpha(Math.sin(this.titleFlash * 3) * 0.5 + 0.5);
       if (Phaser.Input.Keyboard.JustDown(this.keys.j)) {
         audio.resume();
-        this.titleBg.setVisible(false);
-        this.titleText.setVisible(false);
-        this.titleSub.setVisible(false);
-        this.titleStart.setVisible(false);
-        this.titleCredits.setVisible(false);
-        this.gameState = 'tutorial';
-        this.tutorialTimer = 420; // 7 seconds
-        this.showTutorial();
-        audio.startMusic('stage');
+        [this.titleBg, this.titleText, this.titleSub, this.titleStart, this.titleCredits].forEach(t => t.setVisible(false));
+        this.gameState = 'tutorial'; this.tutorialTimer = 420; this.showTutorial(); audio.startMusic('stage');
       }
       return;
     }
-
-    // TUTORIAL
     if (this.gameState === 'tutorial') {
       this.tutorialTimer--;
-      if (this.tutorialTimer <= 0) {
-        this.tutorialBg.setVisible(false);
-        this.tutorialText.setVisible(false);
-        this.gameState = 'playing';
-      }
-      this.updatePlayer(dt);
-      return;
+      if (this.tutorialTimer <= 0) { this.tutorialBg.setVisible(false); this.tutorialText.setVisible(false); this.gameState = 'playing'; }
+      this.updatePlayer(dt); return;
     }
-
-    // END SCREENS
     if (this.gameState === 'win' || this.gameState === 'lose') {
-      if (Phaser.Input.Keyboard.JustDown(this.keys.j)) this.scene.restart();
-      return;
+      if (Phaser.Input.Keyboard.JustDown(this.keys.j)) this.scene.restart(); return;
     }
 
-    // GAME TIMER
     this.gameTime += dt;
-    const mins = Math.floor(this.gameTime / 60);
-    const secs = Math.floor(this.gameTime % 60);
-    this.timerText.setText(`${mins}:${secs.toString().padStart(2, '0')}`);
+    this.timerText.setText(`${Math.floor(this.gameTime/60)}:${Math.floor(this.gameTime%60).toString().padStart(2,'0')}`);
 
-    // WAVE SPAWNING
     if (this.gameState === 'playing') {
       if (this.waveIndex < CONFIG.waveSchedule.length) {
         const w = CONFIG.waveSchedule[this.waveIndex];
         if (this.gameTime >= w.time) { this.spawnWave(w); this.waveIndex++; }
       }
-
-      // Camera scroll
-      if (this.gameTime < CONFIG.bossSpawnTime) {
-        this.cameraOffsetX += 0.4;
-        this.cameras.main.scrollX = this.cameraOffsetX;
-      }
-
-      // Boss intro when time reached and enemies cleared
-      const allWavesDone = this.waveIndex >= CONFIG.waveSchedule.length;
-      const noEnemies = this.enemies.filter(e => e.active).length === 0;
-      if ((this.gameTime >= CONFIG.bossSpawnTime && noEnemies) || (allWavesDone && noEnemies && this.gameTime > 45)) {
-        this.gameState = 'bossIntro';
-        this.bossIntroTimer = 120;
-        this.bossIntroText = this.add.text(W / 2, H / 2 - 15,
-          'WARNING!!\n\nVLADIMIR IMPUDENT\n    APPROACHES!', {
-          fontSize: '9px', fontFamily: 'monospace', color: '#f83800', align: 'center',
-          stroke: '#000000', strokeThickness: 1
+      if (this.gameTime < CONFIG.bossSpawnTime) { this.cameraOffsetX += 0.4; this.cameras.main.scrollX = this.cameraOffsetX; }
+      const allDone = this.waveIndex >= CONFIG.waveSchedule.length;
+      const noEn = this.enemies.filter(e => e.active).length === 0;
+      if ((this.gameTime >= CONFIG.bossSpawnTime && noEn) || (allDone && noEn && this.gameTime > 45)) {
+        this.gameState = 'bossIntro'; this.bossIntroTimer = 120;
+        this.bossIntroText = this.add.text(W/2, H/2-15, 'WARNING!!\n\nVLADIMIR IMPUDENT\n    APPROACHES!', {
+          fontSize: '9px', fontFamily: 'monospace', color: '#f04040', align: 'center', stroke: '#000000', strokeThickness: 2
         }).setOrigin(0.5).setScrollFactor(0).setDepth(80);
       }
     }
-
-    // BOSS INTRO
     if (this.gameState === 'bossIntro') {
-      this.bossIntroTimer--;
-      this.updatePlayer(dt);
-      if (this.bossIntroTimer <= 0) {
-        this.bossIntroText.destroy();
-        this.gameState = 'bossFight';
-        this.spawnBoss();
-      }
+      this.bossIntroTimer--; this.updatePlayer(dt);
+      if (this.bossIntroTimer <= 0) { this.bossIntroText.destroy(); this.gameState = 'bossFight'; this.spawnBoss(); }
       return;
     }
 
-    // GAMEPLAY
-    this.updatePlayer(dt);
-    this.updateEnemies(dt);
-    this.updateBoss(dt);
-    this.updateProjectiles(dt);
-    this.updateDoubtClouds(dt);
-    this.updateUI();
-
+    this.updatePlayer(dt); this.updateEnemies(dt); this.updateBoss(dt);
+    this.updateProjectiles(dt); this.updateDoubtClouds(dt); this.updateUI();
     if (this.player.hp <= 0 && this.gameState !== 'lose') {
-      this.gameState = 'lose';
-      audio.stopMusic();
-      audio.sfxLose();
-      this.showEndScreen(false);
+      this.gameState = 'lose'; audio.stopMusic(); audio.sfxLose(); this.showEndScreen(false);
     }
   }
 
   showTutorial() {
     this.tutorialBg.setVisible(true);
     this.tutorialText.setText(
-      '— CONTROLS —\n\n' +
-      'MOVE:   Arrows / WASD\n' +
-      'JUMP:   K\n' +
-      'ATTACK: J  (tap-tap = combo)\n' +
-      '        Hold J = charged hit\n' +
-      'BLOCK:  L or Shift\n\n' +
-      'Defeat the waves!\n' +
-      'Pop bubbles. Bonk myths.'
+      '— CONTROLS —\n\nMOVE:   Arrows / WASD\nJUMP:   K\nATTACK: J  (tap-tap = combo)\n' +
+      '        Hold J = charged hit\n        Jump+J = KICK!\nBLOCK:  L or Shift\n\nDefeat the waves! Pop bubbles.'
     ).setVisible(true);
   }
 
-  // --- PLAYER UPDATE ---
+  // --- PLAYER ---
   updatePlayer(dt) {
-    const p = this.player;
-    const spd = 1.6;
+    const p = this.player, spd = 1.6;
     let mx = 0, my = 0;
     if (this.cursors.left.isDown || this.keys.a.isDown) mx = -1;
     if (this.cursors.right.isDown || this.keys.d.isDown) mx = 1;
     if (this.cursors.up.isDown || this.keys.w.isDown) my = -1;
     if (this.cursors.down.isDown || this.keys.s.isDown) my = 1;
+    this.isMoving = mx !== 0 || my !== 0;
 
     if (!this.isBlocking) {
       p.x += mx * spd;
       this.playerBaseY = Phaser.Math.Clamp(this.playerBaseY + my * spd * 0.7, LANE_TOP + 15, LANE_BOT);
     }
-
-    const camL = this.cameras.main.scrollX + 10;
-    const camR = this.cameras.main.scrollX + W - 10;
-    p.x = Phaser.Math.Clamp(p.x, camL, camR);
+    p.x = Phaser.Math.Clamp(p.x, this.cameras.main.scrollX + 12, this.cameras.main.scrollX + W - 12);
     if (mx !== 0) p.setFlipX(mx < 0);
 
-    // Jump
-    if (Phaser.Input.Keyboard.JustDown(this.keys.k) && !this.isJumping) {
-      this.isJumping = true;
-      this.jumpVel = -4.5;
-    }
+    if (Phaser.Input.Keyboard.JustDown(this.keys.k) && !this.isJumping) { this.isJumping = true; this.jumpVel = -4.5; }
     if (this.isJumping) {
-      this.jumpVel += 0.22;
-      p.y += this.jumpVel;
-      if (p.y >= this.playerBaseY) { p.y = this.playerBaseY; this.isJumping = false; this.jumpVel = 0; }
-    } else {
-      p.y = this.playerBaseY;
-    }
+      this.jumpVel += 0.22; p.y += this.jumpVel;
+      if (p.y >= this.playerBaseY) { p.y = this.playerBaseY; this.isJumping = false; this.jumpVel = 0; p.setTexture('player'); }
+    } else { p.y = this.playerBaseY; }
 
-    // Block
     this.isBlocking = this.keys.l.isDown || this.keys.shift.isDown;
-    if (this.isBlocking) p.setTint(NES.skyBlue);
+    if (this.isBlocking) p.setTint(PAL.blueLight);
     else if (!this.isCharging) p.clearTint();
 
     if (this.attackCooldown > 0) this.attackCooldown--;
     if (this.comboWindow > 0) this.comboWindow--;
     if (this.playerHitCooldown > 0) this.playerHitCooldown--;
 
-    // Charge
     if (this.keys.j.isDown && !this.isBlocking) {
       this.chargeTimer++;
-      if (this.chargeTimer > 30) { this.isCharging = true; p.setTint(NES.yellow); }
+      if (this.chargeTimer > 30) { this.isCharging = true; p.setTint(PAL.yellowLight); }
     }
 
     if (Phaser.Input.Keyboard.JustUp(this.keys.j) && this.attackCooldown <= 0 && !this.isBlocking) {
-      if (this.isCharging && this.chargeTimer > 30) {
-        this.performAttack(25, 28, true); audio.sfxCharged(); this.isCharging = false;
+      const isKick = this.isJumping;
+      if (isKick) {
+        // JUMP KICK — more damage, extended range
+        p.setTexture('player_kick');
+        this.performAttack(20, 30, false, true);
+        audio.sfxKick();
+      } else if (this.isCharging && this.chargeTimer > 30) {
+        this.performAttack(25, 28, true, false); audio.sfxCharged(); this.isCharging = false;
       } else if (this.comboWindow > 0 && this.comboCount >= 1) {
-        this.performAttack(15, 22, false); this.comboCount++;
-        if (this.comboCount >= 3) {
-          this.stats.combos++;
-          this.spawnConfetti(p.x + (p.flipX ? -15 : 15), p.y - 8);
-          audio.sfxCombo(); this.comboCount = 0;
-        } else { audio.sfxPunch(); }
+        this.performAttack(15, 22, false, false); this.comboCount++;
+        if (this.comboCount >= 3) { this.stats.combos++; this.spawnConfetti(p.x + (p.flipX?-15:15), p.y-8); audio.sfxCombo(); this.comboCount = 0; }
+        else audio.sfxPunch();
       } else {
-        this.performAttack(8, 20, false); this.comboCount = 1; audio.sfxPunch();
+        this.performAttack(8, 20, false, false); this.comboCount = 1; audio.sfxPunch();
       }
       this.comboWindow = 30; this.attackCooldown = 12; this.chargeTimer = 0;
     }
-
     if (Phaser.Input.Keyboard.JustDown(this.keys.j)) { this.chargeTimer = 0; this.isCharging = false; }
     p.setDepth(10 + (p.y / H) * 0.1);
   }
 
-  performAttack(damage, range, isCharged) {
-    const p = this.player;
-    const dir = p.flipX ? -1 : 1;
-    const ax = p.x + dir * range / 2;
-    const ay = p.y;
-    this.spawnSpark(p.x + dir * 14, p.y - 8);
+  performAttack(damage, range, isCharged, isKick) {
+    const p = this.player, dir = p.flipX ? -1 : 1;
+    const ax = p.x + dir * range / 2, ay = p.y;
+    this.spawnSpark(p.x + dir * (isKick ? 20 : 14), p.y - (isKick ? 2 : 8));
 
     for (const e of this.enemies) {
       if (!e.active) continue;
       if (Phaser.Math.Distance.Between(ax, ay, e.x, e.y) < range) {
-        const dmg = this.getPlayerDamage(damage);
-        e.hp -= dmg; e.hitTimer = 10;
-        e.x += dir * (isCharged ? 14 : 6);
-        e.setTint(NES.white);
+        e.hp -= this.getPlayerDamage(damage); e.hitTimer = 10;
+        e.x += dir * (isCharged ? 14 : isKick ? 10 : 6); e.setTint(PAL.white);
         this.stats.mythsBonked++;
         if (e.hp <= 0) this.killEnemy(e);
       }
     }
-
-    if (this.boss && this.boss.active) {
-      if (Phaser.Math.Distance.Between(ax, ay, this.boss.x, this.boss.y) < range + 10) {
-        const dmg = this.getPlayerDamage(damage);
-        this.boss.hp -= dmg; this.boss.hitTimer = 10;
-        this.boss.x += dir * (isCharged ? 8 : 3);
-        this.boss.setTint(NES.white);
-        audio.sfxBossHit();
-        this.shakeTimer = isCharged ? 8 : 3;
-
-        if (this.boss.hp <= this.boss.maxHp * 0.4 && this.bossPhase === 1) {
-          this.bossPhase = 2;
-          this.boss.setTint(NES.orange);
-          this.showBossShout();
-        }
-        if (this.boss.hp <= 0) {
-          this.boss.destroy();
-          if (this.bossShoutText) this.bossShoutText.destroy();
-          this.bossHpBg.setVisible(false);
-          this.bossHpBar.setVisible(false);
-          this.bossHpLabel.setVisible(false);
-          this.boss = null;
-          this.gameState = 'win';
-          audio.stopMusic(); audio.sfxWin();
-          this.shakeTimer = 15;
-          this.spawnConfetti(p.x, p.y - 10);
-          this.spawnConfetti(p.x + 20, p.y);
-          this.spawnConfetti(p.x - 20, p.y);
-          this.showEndScreen(true);
-        }
+    if (this.boss && this.boss.active && Phaser.Math.Distance.Between(ax, ay, this.boss.x, this.boss.y) < range + 12) {
+      this.boss.hp -= this.getPlayerDamage(damage); this.boss.hitTimer = 10;
+      this.boss.x += dir * (isCharged ? 8 : 4); this.boss.setTint(PAL.white);
+      audio.sfxBossHit(); this.shakeTimer = isCharged ? 8 : 3;
+      if (this.boss.hp <= this.boss.maxHp * 0.4 && this.bossPhase === 1) { this.bossPhase = 2; this.showBossShout(); }
+      if (this.boss.hp <= 0) {
+        this.boss.destroy(); if (this.bossHead) this.bossHead.destroy();
+        if (this.bossShoutText) this.bossShoutText.destroy();
+        this.bossHpBg.setVisible(false); this.bossHpBar.setVisible(false); this.bossHpLabel.setVisible(false);
+        this.boss = null; this.gameState = 'win'; audio.stopMusic(); audio.sfxWin();
+        this.shakeTimer = 15;
+        this.spawnConfetti(p.x, p.y-10); this.spawnConfetti(p.x+20, p.y); this.spawnConfetti(p.x-20, p.y);
+        this.showEndScreen(true);
       }
     }
-
     for (const pr of this.projectiles) {
       if (!pr.active) continue;
-      if (Phaser.Math.Distance.Between(ax, ay, pr.x, pr.y) < range) {
-        pr.label.destroy(); pr.destroy();
-        this.stats.bubblesPopped++; this.score += 50;
-      }
+      if (Phaser.Math.Distance.Between(ax, ay, pr.x, pr.y) < range) { pr.label.destroy(); pr.destroy(); this.stats.bubblesPopped++; this.score += 50; }
     }
   }
 
   killEnemy(e) {
-    audio.sfxEnemyDie(); this.score += 100;
-    this.spawnSpark(e.x, e.y - 8);
-    if (e.logoBadge) e.logoBadge.destroy();
-    if (e.hpBg) e.hpBg.destroy();
-    if (e.hpFill) e.hpFill.destroy();
+    audio.sfxEnemyDie(); this.score += 100; this.spawnSpark(e.x, e.y-8);
+    if (e.logoBadge) e.logoBadge.destroy(); if (e.hpBg) e.hpBg.destroy(); if (e.hpFill) e.hpFill.destroy();
     e.destroy();
   }
 
-  // --- ENEMY AI ---
   updateEnemies(dt) {
     for (const e of this.enemies) {
       if (!e.active) continue;
       if (e.hitTimer > 0) { e.hitTimer--; if (e.hitTimer <= 0) e.clearTint(); }
       if (e.stunTimer > 0) { e.stunTimer--; continue; }
       if (e.attackCooldown > 0) e.attackCooldown--;
-
-      const dx = this.player.x - e.x, dy = this.player.y - e.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      e.dir = dx > 0 ? 1 : -1;
-      e.setFlipX(e.dir < 0);
-
-      if (dist > e.attackRange) {
-        e.x += (dx / dist) * e.speed;
-        e.y += (dy / dist) * e.speed * 0.5;
-        e.y = Phaser.Math.Clamp(e.y, LANE_TOP + 10, LANE_BOT);
-      }
+      const dx = this.player.x - e.x, dy = this.player.y - e.y, dist = Math.sqrt(dx*dx+dy*dy);
+      e.dir = dx > 0 ? 1 : -1; e.setFlipX(e.dir < 0);
+      if (dist > e.attackRange) { e.x += (dx/dist)*e.speed; e.y += (dy/dist)*e.speed*0.5; e.y = Phaser.Math.Clamp(e.y, LANE_TOP+10, LANE_BOT); }
       if (dist <= e.attackRange + 5 && e.attackCooldown <= 0) this.enemyAttack(e);
-
-      // Update badge + hp position
-      if (e.logoBadge && e.logoBadge.active) e.logoBadge.setPosition(e.x, e.y - 22);
-      if (e.hpBg && e.hpBg.active) {
-        e.hpBg.setPosition(e.x, e.y - 15);
-        e.hpFill.setPosition(e.x - 10, e.y - 15);
-        e.hpFill.width = 20 * Math.max(0, e.hp / e.maxHp);
-      }
-      e.setDepth(10 + (e.y / H) * 0.1);
+      if (e.logoBadge && e.logoBadge.active) e.logoBadge.setPosition(e.x, e.y - 28);
+      if (e.hpBg && e.hpBg.active) { e.hpBg.setPosition(e.x, e.y-20); e.hpFill.setPosition(e.x-12, e.y-20); e.hpFill.width = 24*Math.max(0, e.hp/e.maxHp); }
+      e.setDepth(10 + (e.y/H)*0.1);
     }
     this.enemies = this.enemies.filter(e => e.active);
   }
-
   enemyAttack(e) {
-    const type = e.enemyType;
-    if (type === 'bruiser') {
-      e.x += e.dir * 10; this.hitPlayer(8, e); e.attackCooldown = 80;
-    } else if (type === 'columnist') {
-      this.hitPlayer(5, e);
-      const ht = this.add.text(e.x + e.dir * 12, e.y - 18, 'HOT TAKE!', {
-        fontSize: '6px', fontFamily: 'monospace', color: '#f8d878', backgroundColor: '#000000cc', padding: { x: 2, y: 1 }
-      }).setOrigin(0.5).setDepth(20);
-      this.tweens.add({ targets: ht, alpha: 0, y: e.y - 35, duration: 700, onComplete: () => ht.destroy() });
-      e.attackCooldown = 110;
-    } else if (type === 'shouter') {
-      this.spawnProjectile(e.x, e.y - 5, e.dir * 1.4, 0);
-      e.attackCooldown = 130;
-    } else if (type === 'lobbyist') {
-      this.spawnDoubtCloud(this.player.x + (Math.random() - 0.5) * 40, this.player.y);
-      e.attackCooldown = 180;
-    }
+    if (e.enemyType === 'bruiser') { e.x += e.dir*10; this.hitPlayer(8); e.attackCooldown = 80; }
+    else if (e.enemyType === 'columnist') {
+      this.hitPlayer(5);
+      const ht = this.add.text(e.x+e.dir*12, e.y-22, 'HOT TAKE!', { fontSize:'6px', fontFamily:'monospace', color:'#f8e060', backgroundColor:'#000000cc', padding:{x:2,y:1} }).setOrigin(0.5).setDepth(20);
+      this.tweens.add({ targets:ht, alpha:0, y:e.y-40, duration:700, onComplete:()=>ht.destroy() }); e.attackCooldown = 110;
+    } else if (e.enemyType === 'shouter') { this.spawnProjectile(e.x, e.y-5, e.dir*1.4, 0); e.attackCooldown = 130; }
+    else if (e.enemyType === 'lobbyist') { this.spawnDoubtCloud(this.player.x+(Math.random()-0.5)*40, this.player.y); e.attackCooldown = 180; }
   }
-
-  hitPlayer(damage, source) {
+  hitPlayer(damage) {
     if (this.playerHitCooldown > 0) return;
     if (this.isBlocking) { audio.sfxBlock(); damage = Math.floor(damage * 0.2); }
-    this.player.hp -= damage;
-    this.playerHitCooldown = 30;
-    this.player.setTint(NES.red);
-    this.time.delayedCall(200, () => { if (this.player.active && !this.isBlocking) this.player.clearTint(); });
-    this.shakeTimer = 3;
+    this.player.hp -= damage; this.playerHitCooldown = 30; this.player.setTint(PAL.red);
+    this.time.delayedCall(200, () => { if (this.player.active && !this.isBlocking) this.player.clearTint(); }); this.shakeTimer = 3;
   }
 
-  // --- BOSS AI ---
   updateBoss(dt) {
     if (!this.boss || !this.boss.active) return;
     const b = this.boss;
     if (b.hitTimer > 0) { b.hitTimer--; if (b.hitTimer <= 0) b.clearTint(); }
     if (this.bossShoutTimer > 0) { this.bossShoutTimer--; if (this.bossShoutTimer <= 0) this.showBossShout(); }
-    if (this.bossShoutText && this.bossShoutText.active) this.bossShoutText.setPosition(b.x, b.y - 30);
-
+    // Move boss head with body
+    if (this.bossHead && this.bossHead.active) {
+      this.bossHead.setPosition(b.x, b.y - 30);
+      this.bossHead.setFlipX(b.flipX);
+    }
+    if (this.bossShoutText && this.bossShoutText.active) this.bossShoutText.setPosition(b.x, b.y - 44);
     if (b.stunTimer > 0) { b.stunTimer--; return; }
     if (b.attackCooldown > 0) b.attackCooldown--;
-
-    const dx = this.player.x - b.x, dy = this.player.y - b.y;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    b.dir = dx > 0 ? 1 : -1;
-    b.setFlipX(b.dir < 0);
-
-    const moveSpd = this.bossPhase === 2 ? 0.9 : 0.45;
-
-    if (b.dashTimer > 0) {
-      b.dashTimer--;
-      b.x += b.dir * 3.5;
-      b.x = Phaser.Math.Clamp(b.x, this.cameras.main.scrollX + 12, this.cameras.main.scrollX + W - 12);
-      return;
-    }
-
-    if (dist > 32) {
-      b.x += (dx / dist) * moveSpd;
-      b.y += (dy / dist) * moveSpd * 0.5;
-      b.y = Phaser.Math.Clamp(b.y, LANE_TOP + 10, LANE_BOT);
-    }
-
+    const dx = this.player.x-b.x, dy = this.player.y-b.y, dist = Math.sqrt(dx*dx+dy*dy);
+    b.dir = dx>0?1:-1; b.setFlipX(b.dir<0);
+    const spd = this.bossPhase===2?0.9:0.45;
+    if (b.dashTimer > 0) { b.dashTimer--; b.x += b.dir*3.5; b.x = Phaser.Math.Clamp(b.x, this.cameras.main.scrollX+14, this.cameras.main.scrollX+W-14); return; }
+    if (dist > 35) { b.x += (dx/dist)*spd; b.y += (dy/dist)*spd*0.5; b.y = Phaser.Math.Clamp(b.y, LANE_TOP+10, LANE_BOT); }
     if (b.attackCooldown <= 0) {
-      if (this.bossPhase === 2 && Math.random() < 0.3) {
-        b.dashTimer = 18; b.attackCooldown = 80;
-        const wt = this.add.text(b.x, b.y - 24, '!!', {
-          fontSize: '10px', fontFamily: 'monospace', color: '#f83800'
-        }).setOrigin(0.5).setDepth(25);
-        this.tweens.add({ targets: wt, alpha: 0, duration: 350, onComplete: () => wt.destroy() });
-      } else if (this.bossPhase === 2 && Math.random() < 0.4 && dist > 45) {
-        const wt = this.add.text(b.x, b.y - 24, '!!!', {
-          fontSize: '10px', fontFamily: 'monospace', color: '#f83800'
-        }).setOrigin(0.5).setDepth(25);
-        this.tweens.add({ targets: wt, alpha: 0, duration: 450, onComplete: () => wt.destroy() });
-        this.time.delayedCall(280, () => {
-          if (!this.boss) return;
-          this.spawnProjectile(b.x, b.y - 5, b.dir * 1.6, -0.5, true);
-          this.spawnProjectile(b.x, b.y - 5, b.dir * 1.6, 0, true);
-          this.spawnProjectile(b.x, b.y - 5, b.dir * 1.6, 0.5, true);
-        });
-        b.attackCooldown = 110;
-      } else if (dist < 38) {
-        const wt = this.add.text(b.x + b.dir * 12, b.y - 18, '!', {
-          fontSize: '12px', fontFamily: 'monospace', color: '#f83800'
-        }).setOrigin(0.5).setDepth(25);
-        this.tweens.add({ targets: wt, alpha: 0, duration: 280, onComplete: () => wt.destroy() });
-        this.time.delayedCall(350, () => {
-          if (!this.boss) return;
-          if (Phaser.Math.Distance.Between(this.player.x, this.player.y, b.x, b.y) < 42) {
-            this.hitPlayer(this.bossPhase === 2 ? 15 : 10, b);
-            this.spawnSpark(this.player.x, this.player.y - 8);
-          }
-        });
-        b.attackCooldown = this.bossPhase === 2 ? 65 : 95;
-      } else {
-        b.attackCooldown = 25;
-      }
+      if (this.bossPhase===2 && Math.random()<0.3) {
+        b.dashTimer=18; b.attackCooldown=80;
+        const wt = this.add.text(b.x, b.y-34, '!!', { fontSize:'10px', fontFamily:'monospace', color:'#f04040' }).setOrigin(0.5).setDepth(25);
+        this.tweens.add({ targets:wt, alpha:0, duration:350, onComplete:()=>wt.destroy() });
+      } else if (this.bossPhase===2 && Math.random()<0.4 && dist>50) {
+        const wt = this.add.text(b.x, b.y-34, '!!!', { fontSize:'10px', fontFamily:'monospace', color:'#f04040' }).setOrigin(0.5).setDepth(25);
+        this.tweens.add({ targets:wt, alpha:0, duration:450, onComplete:()=>wt.destroy() });
+        this.time.delayedCall(280, () => { if (!this.boss) return;
+          this.spawnProjectile(b.x, b.y-5, b.dir*1.6, -0.5, true);
+          this.spawnProjectile(b.x, b.y-5, b.dir*1.6, 0, true);
+          this.spawnProjectile(b.x, b.y-5, b.dir*1.6, 0.5, true);
+        }); b.attackCooldown=110;
+      } else if (dist<40) {
+        const wt = this.add.text(b.x+b.dir*14, b.y-22, '!', { fontSize:'12px', fontFamily:'monospace', color:'#f04040' }).setOrigin(0.5).setDepth(25);
+        this.tweens.add({ targets:wt, alpha:0, duration:280, onComplete:()=>wt.destroy() });
+        this.time.delayedCall(350, () => { if (!this.boss) return;
+          if (Phaser.Math.Distance.Between(this.player.x, this.player.y, b.x, b.y) < 44) { this.hitPlayer(this.bossPhase===2?15:10); this.spawnSpark(this.player.x, this.player.y-8); }
+        }); b.attackCooldown = this.bossPhase===2?65:95;
+      } else { b.attackCooldown = 25; }
     }
-
-    b.x = Phaser.Math.Clamp(b.x, this.cameras.main.scrollX + 12, this.cameras.main.scrollX + W - 12);
-    this.bossHpBar.width = 60 * Math.max(0, b.hp / b.maxHp);
+    b.x = Phaser.Math.Clamp(b.x, this.cameras.main.scrollX+14, this.cameras.main.scrollX+W-14);
+    this.bossHpBar.width = 62*Math.max(0, b.hp/b.maxHp);
   }
 
   updateProjectiles(dt) {
     for (const p of this.projectiles) {
-      if (!p.active) continue;
-      p.x += p.vx; p.y += p.vy; p.life--;
+      if (!p.active) continue; p.x += p.vx; p.y += p.vy; p.life--;
       if (p.label && p.label.active) p.label.setPosition(p.x, p.y);
       if (Phaser.Math.Distance.Between(p.x, p.y, this.player.x, this.player.y) < 14) {
-        this.hitPlayer(p.fromBoss ? 10 : 5, null);
-        this.stats.bubblesPopped++;
-        if (p.label) p.label.destroy(); p.destroy(); continue;
+        this.hitPlayer(p.fromBoss?10:5); this.stats.bubblesPopped++; if (p.label) p.label.destroy(); p.destroy(); continue;
       }
-      if (p.life <= 0 || p.x < this.cameras.main.scrollX - 30 || p.x > this.cameras.main.scrollX + W + 30) {
-        if (p.label) p.label.destroy(); p.destroy();
-      }
+      if (p.life<=0 || p.x<this.cameras.main.scrollX-30 || p.x>this.cameras.main.scrollX+W+30) { if (p.label) p.label.destroy(); p.destroy(); }
     }
     this.projectiles = this.projectiles.filter(p => p.active);
   }
-
   updateDoubtClouds(dt) {
-    for (const c of this.doubtClouds) {
-      if (!c.active) continue;
-      c.life--;
-      c.setAlpha(0.3 + Math.sin(c.life * 0.1) * 0.15);
-      if (c.life <= 0) c.destroy();
-    }
+    for (const c of this.doubtClouds) { if (!c.active) continue; c.life--; c.setAlpha(0.3+Math.sin(c.life*0.1)*0.15); if (c.life<=0) c.destroy(); }
     this.doubtClouds = this.doubtClouds.filter(c => c.active);
   }
-
   updateUI() {
-    this.hpBar.width = 60 * Math.max(0, this.player.hp / this.player.maxHp);
-    const pct = this.player.hp / this.player.maxHp;
-    this.hpBar.fillColor = pct > 0.5 ? NES.green : (pct > 0.25 ? NES.yellow : NES.red);
+    this.hpBar.width = 62*Math.max(0, this.player.hp/this.player.maxHp);
+    const p = this.player.hp/this.player.maxHp;
+    this.hpBar.fillColor = p>0.5?PAL.hpGreen:(p>0.25?PAL.hpYellow:PAL.hpRed);
     this.scoreText.setText(`SCORE ${this.score}`);
   }
-
   showEndScreen(won) {
     this.endBg.setVisible(true);
-    if (won) {
-      this.endText.setText(
-        '★ VERIFIED! ★\n\n' +
-        `Score: ${this.score}\n` +
-        `Combos: ${this.stats.combos}\n` +
-        `Bubbles Popped: ${this.stats.bubblesPopped}\n` +
-        `Myths Bonked: ${this.stats.mythsBonked}\n\n` +
-        'Press J to play again'
-      ).setColor('#b8f818').setVisible(true);
-    } else {
-      this.endText.setText(
-        'MISLED... TRY AGAIN\n\n' +
-        `Score: ${this.score}\n` +
-        `Myths Bonked: ${this.stats.mythsBonked}\n\n` +
-        'Press J to restart'
-      ).setColor('#f83800').setVisible(true);
-    }
+    this.endText.setText(won
+      ? `★ VERIFIED! ★\n\nScore: ${this.score}\nCombos: ${this.stats.combos}\nBubbles Popped: ${this.stats.bubblesPopped}\nMyths Bonked: ${this.stats.mythsBonked}\n\nPress J to play again`
+      : `MISLED... TRY AGAIN\n\nScore: ${this.score}\nMyths Bonked: ${this.stats.mythsBonked}\n\nPress J to restart`
+    ).setColor(won ? '#90f0a0' : '#f04040').setVisible(true);
   }
+}
+
+// Helper for background props
+function sRect16(scene, x, y, w, h, dk, md, lt) {
+  scene.add.rectangle(x+w/2, y+h/2, w, h, dk).setDepth(-1).setScrollFactor(1);
+  scene.add.rectangle(x+w/2, y+h/2, w-2, h-2, md).setDepth(-1).setScrollFactor(1);
+  scene.add.rectangle(x+w/2, y+h/2-1, w-4, Math.floor(h/3), lt).setDepth(-1).setScrollFactor(1);
 }
 
 // ============================================================
@@ -1251,13 +886,9 @@ class GameScene extends Phaser.Scene {
 // ============================================================
 const SCALE = Math.min(Math.floor(window.innerWidth / W), Math.floor(window.innerHeight / H));
 const game = new Phaser.Game({
-  type: Phaser.AUTO,
-  width: W, height: H, zoom: SCALE,
-  pixelArt: true,
-  backgroundColor: '#000000',
-  physics: { default: 'none' },
-  scene: [GameScene],
-  parent: document.body,
+  type: Phaser.AUTO, width: W, height: H, zoom: SCALE,
+  pixelArt: true, backgroundColor: '#000000',
+  physics: { default: 'none' }, scene: [GameScene], parent: document.body,
   scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
 });
 </script>
