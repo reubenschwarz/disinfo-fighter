@@ -1,0 +1,1148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Information Fighter</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #111; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; }
+  canvas { image-rendering: pixelated; image-rendering: crisp-edges; }
+</style>
+</head>
+<body>
+<script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
+<script>
+// ============================================================
+// CONFIG — edit these to customise the game
+// ============================================================
+const CONFIG = {
+  runDurationSeconds: 210, // total target playtime
+  waveSchedule: [
+    // { time: seconds, enemies: [{ type, count }] }
+    { time: 2,   enemies: [{ type: 'bruiser', count: 2 }] },
+    { time: 25,  enemies: [{ type: 'columnist', count: 2 }, { type: 'bruiser', count: 1 }] },
+    { time: 50,  enemies: [{ type: 'shouter', count: 2 }] },
+    { time: 75,  enemies: [{ type: 'bruiser', count: 1 }, { type: 'lobbyist', count: 1 }, { type: 'columnist', count: 1 }] },
+    { time: 100, enemies: [{ type: 'shouter', count: 2 }, { type: 'bruiser', count: 2 }] },
+    { time: 120, enemies: [{ type: 'lobbyist', count: 2 }, { type: 'columnist', count: 1 }] },
+    { time: 140, enemies: [{ type: 'bruiser', count: 2 }, { type: 'shouter', count: 1 }, { type: 'lobbyist', count: 1 }] },
+  ],
+  // Parody outlet names (change freely)
+  enemyNames: {
+    bruiser:    'Daily Tattler',
+    columnist:  'The Austeralian',
+    shouter:    'Faux News AU',
+    lobbyist:   'Advance Aus™',
+  },
+  // Boss dialogue — safe parody defaults
+  bossLinesParody: [
+    "I have the best misinformation!",
+    "Nobody spreads doubt like me!",
+    "Tremendous confusion, believe me!",
+    "I know more about hoaxes than anyone!",
+    "Many people are saying… things!",
+    "This is the greatest distraction ever!",
+    "Fake? You're fake! Everything is fake!",
+    "I alone can confuse the narrative!",
+  ],
+  // Optional: paste short real-world quotations here
+  bossLinesOptionalRealQuotes: [
+    // e.g. "Actual quote here — Source"
+  ],
+  // Bubble text options for projectiles / effects
+  bubbleTexts: ['DOUBT', 'HOAX', 'JUST ASKING', 'BOTH SIDES', 'SUSPICIOUS', 'FAKE', 'WAKE UP'],
+};
+
+// ============================================================
+// CONSTANTS
+// ============================================================
+const W = 320, H = 180;
+const LANE_TOP = 100, LANE_BOT = 170; // vertical lane bounds
+const SCALE = Math.min(Math.floor(window.innerWidth / W), Math.floor(window.innerHeight / H));
+const GROUND_Y = 150; // baseline
+const COLORS = {
+  player: 0x3399ff, playerOutline: 0x1155aa,
+  bruiser: 0xcc3333, columnist: 0xdd8833, shouter: 0xaa33aa, lobbyist: 0x33aa33,
+  boss: 0xcc0000, bossPhase2: 0xff3300,
+  bg: 0x222244, street: 0x444455, building: 0x333355,
+  hpGreen: 0x44dd44, hpRed: 0xdd4444, hpBg: 0x222222,
+  white: 0xffffff, yellow: 0xffff44,
+};
+
+// ============================================================
+// AUDIO ENGINE (WebAudio chiptune)
+// ============================================================
+class ChipAudio {
+  constructor() {
+    this.ctx = null;
+    this.musicGain = null;
+    this.sfxGain = null;
+    this.musicPlaying = false;
+  }
+
+  init() {
+    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+    this.musicGain = this.ctx.createGain();
+    this.musicGain.gain.value = 0.12;
+    this.musicGain.connect(this.ctx.destination);
+    this.sfxGain = this.ctx.createGain();
+    this.sfxGain.gain.value = 0.2;
+    this.sfxGain.connect(this.ctx.destination);
+  }
+
+  resume() { if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume(); }
+
+  // Play a note: freq in Hz, duration in sec, type = 'square'|'sawtooth'|'triangle'
+  note(freq, dur, type = 'square', gain = null) {
+    if (!this.ctx) return;
+    const osc = this.ctx.createOscillator();
+    const g = this.ctx.createGain();
+    osc.type = type;
+    osc.frequency.value = freq;
+    g.gain.setValueAtTime(0.3, this.ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + dur);
+    osc.connect(g);
+    g.connect(gain || this.sfxGain);
+    osc.start(this.ctx.currentTime);
+    osc.stop(this.ctx.currentTime + dur);
+  }
+
+  // Noise burst for hits
+  noise(dur = 0.08) {
+    if (!this.ctx) return;
+    const buf = this.ctx.createBuffer(1, this.ctx.sampleRate * dur, this.ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    const src = this.ctx.createBufferSource();
+    src.buffer = buf;
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0.15, this.ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + dur);
+    src.connect(g);
+    g.connect(this.sfxGain);
+    src.start();
+  }
+
+  sfxPunch()  { this.note(200, 0.08, 'square'); this.noise(0.06); }
+  sfxHit()    { this.note(120, 0.12, 'sawtooth'); this.noise(0.1); }
+  sfxCombo()  { this.note(400, 0.06, 'square'); this.note(600, 0.06, 'square'); this.noise(0.04); }
+  sfxCharged(){ this.note(80, 0.2, 'sawtooth'); this.note(160, 0.15, 'square'); this.noise(0.15); }
+  sfxBlock()  { this.note(300, 0.05, 'triangle'); }
+  sfxEnemyDie(){ this.note(500, 0.05, 'square'); this.note(400, 0.05, 'square'); this.note(300, 0.1, 'triangle'); }
+  sfxBossHit(){ this.note(90, 0.2, 'sawtooth'); this.noise(0.15); }
+  sfxWin()    { [523,659,784,1047].forEach((f,i) => setTimeout(() => this.note(f, 0.3, 'square'), i*150)); }
+  sfxLose()   { [300,250,200,150].forEach((f,i) => setTimeout(() => this.note(f, 0.4, 'sawtooth'), i*200)); }
+
+  // Simple looping chiptune bass+melody
+  startMusic() {
+    if (this.musicPlaying || !this.ctx) return;
+    this.musicPlaying = true;
+    const bassNotes = [130.81, 146.83, 164.81, 146.83]; // C3 D3 E3 D3
+    const melNotes  = [523.25, 587.33, 659.25, 523.25, 493.88, 440, 392, 440]; // C5-ish melody
+    let bi = 0, mi = 0;
+    this._musicInterval = setInterval(() => {
+      if (!this.musicPlaying) return;
+      this.note(bassNotes[bi % bassNotes.length], 0.18, 'triangle', this.musicGain);
+      bi++;
+      if (bi % 2 === 0) {
+        this.note(melNotes[mi % melNotes.length], 0.12, 'square', this.musicGain);
+        mi++;
+      }
+    }, 220);
+  }
+
+  stopMusic() {
+    this.musicPlaying = false;
+    if (this._musicInterval) clearInterval(this._musicInterval);
+  }
+}
+
+const audio = new ChipAudio();
+
+// ============================================================
+// TEXTURE GENERATION (runtime pixel art)
+// ============================================================
+function genTextures(scene) {
+  // Player: blue figure with clipboard
+  const pg = scene.make.graphics({ add: false });
+  pg.fillStyle(COLORS.player);
+  pg.fillRect(4, 0, 8, 6);   // head
+  pg.fillStyle(COLORS.playerOutline);
+  pg.fillRect(3, 6, 10, 10);  // body
+  pg.fillStyle(COLORS.player);
+  pg.fillRect(5, 8, 6, 6);
+  pg.fillStyle(0xffffff);
+  pg.fillRect(12, 7, 4, 5);   // clipboard
+  pg.fillStyle(0x333333);
+  pg.fillRect(13, 8, 2, 3);
+  pg.fillStyle(COLORS.playerOutline);
+  pg.fillRect(4, 16, 3, 4);   // legs
+  pg.fillRect(9, 16, 3, 4);
+  pg.generateTexture('player', 16, 20);
+  pg.destroy();
+
+  // Enemy textures
+  const enemyDefs = [
+    { key: 'bruiser',   color: COLORS.bruiser,   w: 14, h: 20, headText: 'DT' },
+    { key: 'columnist', color: COLORS.columnist,  w: 12, h: 18, headText: 'TA' },
+    { key: 'shouter',   color: COLORS.shouter,    w: 12, h: 18, headText: 'FN' },
+    { key: 'lobbyist',  color: COLORS.lobbyist,   w: 13, h: 19, headText: 'AA' },
+  ];
+  enemyDefs.forEach(e => {
+    const g = scene.make.graphics({ add: false });
+    g.fillStyle(e.color);
+    g.fillRect(2, 0, e.w - 4, 7);       // head
+    g.fillStyle(e.color - 0x222222);
+    g.fillRect(1, 7, e.w - 2, e.h - 11); // body
+    g.fillStyle(e.color - 0x444444);
+    g.fillRect(3, e.h - 4, 3, 4);        // legs
+    g.fillRect(e.w - 6, e.h - 4, 3, 4);
+    g.generateTexture(e.key, e.w, e.h);
+    g.destroy();
+  });
+
+  // Boss: bigger red figure
+  const bg = scene.make.graphics({ add: false });
+  bg.fillStyle(COLORS.boss);
+  bg.fillRect(4, 0, 16, 10);   // head
+  bg.fillStyle(0xffcc00);
+  bg.fillRect(6, 0, 12, 3);    // hair
+  bg.fillStyle(0x990000);
+  bg.fillRect(2, 10, 20, 14);  // body (suit)
+  bg.fillStyle(0xcc0000);
+  bg.fillRect(6, 12, 12, 10);
+  bg.fillStyle(0x880000);
+  bg.fillRect(6, 24, 4, 6);    // legs
+  bg.fillRect(14, 24, 4, 6);
+  bg.generateTexture('boss', 24, 30);
+  bg.destroy();
+
+  // Projectile bubble
+  const pb = scene.make.graphics({ add: false });
+  pb.fillStyle(0xffffff);
+  pb.fillRoundedRect(0, 0, 24, 10, 3);
+  pb.generateTexture('bubble', 24, 10);
+  pb.destroy();
+
+  // Doubt cloud
+  const dc = scene.make.graphics({ add: false });
+  dc.fillStyle(0x888888);
+  dc.setAlpha(0.5);
+  dc.fillCircle(16, 16, 16);
+  dc.fillCircle(28, 12, 12);
+  dc.fillCircle(8, 12, 10);
+  dc.generateTexture('doubtcloud', 40, 32);
+  dc.destroy();
+
+  // Hit spark
+  const sp = scene.make.graphics({ add: false });
+  sp.fillStyle(COLORS.yellow);
+  sp.fillRect(4, 0, 2, 10);
+  sp.fillRect(0, 4, 10, 2);
+  sp.fillRect(1, 1, 2, 2);
+  sp.fillRect(7, 7, 2, 2);
+  sp.fillRect(7, 1, 2, 2);
+  sp.fillRect(1, 7, 2, 2);
+  sp.generateTexture('spark', 10, 10);
+  sp.destroy();
+
+  // Confetti particle
+  const cf = scene.make.graphics({ add: false });
+  cf.fillStyle(0xffff00);
+  cf.fillRect(0, 0, 3, 3);
+  cf.generateTexture('confetti', 3, 3);
+  cf.destroy();
+}
+
+// ============================================================
+// MAIN GAME SCENE
+// ============================================================
+class GameScene extends Phaser.Scene {
+  constructor() { super('GameScene'); }
+
+  create() {
+    // State
+    this.gameState = 'title'; // title | tutorial | playing | bossIntro | bossFight | win | lose
+    this.gameTime = 0;
+    this.score = 0;
+    this.stats = { combos: 0, bubblesPopped: 0, mythsBonked: 0 };
+    this.waveIndex = 0;
+    this.enemies = [];
+    this.projectiles = [];
+    this.doubtClouds = [];
+    this.tutorialTimer = 0;
+    this.shakeTimer = 0;
+    this.cameraOffsetX = 0;
+
+    genTextures(this);
+    audio.init();
+
+    // Background layers
+    this.bgGroup = this.add.group();
+    this.drawBackground();
+
+    // Player
+    this.player = this.createPlayer();
+
+    // UI layer
+    this.uiGroup = this.add.group();
+    this.createUI();
+
+    // Controls
+    this.cursors = this.input.keyboard.createCursorKeys();
+    this.keys = {
+      w: this.input.keyboard.addKey('W'),
+      a: this.input.keyboard.addKey('A'),
+      s: this.input.keyboard.addKey('S'),
+      d: this.input.keyboard.addKey('D'),
+      j: this.input.keyboard.addKey('J'),
+      k: this.input.keyboard.addKey('K'),
+      l: this.input.keyboard.addKey('L'),
+      shift: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SHIFT),
+    };
+
+    // Attack state
+    this.attackTimer = 0;
+    this.comboCount = 0;
+    this.comboWindow = 0;
+    this.chargeTimer = 0;
+    this.isCharging = false;
+    this.isBlocking = false;
+    this.attackCooldown = 0;
+    this.playerHitCooldown = 0;
+    this.jumpVel = 0;
+    this.isJumping = false;
+    this.playerBaseY = GROUND_Y;
+
+    // Boss ref
+    this.boss = null;
+    this.bossShoutTimer = 0;
+    this.bossShoutText = null;
+    this.bossAttackTimer = 0;
+    this.bossPhase = 1;
+
+    // Title screen
+    this.titleText = this.add.text(W / 2, 50, 'INFORMATION\n   FIGHTER', {
+      fontSize: '16px', fontFamily: 'monospace', color: '#ffff44', align: 'center'
+    }).setOrigin(0.5).setDepth(100);
+    this.titleSub = this.add.text(W / 2, 100, 'Press J to start', {
+      fontSize: '8px', fontFamily: 'monospace', color: '#aaaaaa', align: 'center'
+    }).setOrigin(0.5).setDepth(100);
+    this.titleFlash = 0;
+
+    // Tutorial overlay
+    this.tutorialBg = this.add.rectangle(W / 2, H / 2, W - 20, H - 20, 0x000000, 0.85).setDepth(90).setVisible(false);
+    this.tutorialText = this.add.text(W / 2, H / 2, '', {
+      fontSize: '7px', fontFamily: 'monospace', color: '#ffffff', align: 'center', lineSpacing: 4
+    }).setOrigin(0.5).setDepth(91).setVisible(false);
+
+    // End screen
+    this.endBg = this.add.rectangle(W / 2, H / 2, W, H, 0x000000, 0.9).setDepth(100).setVisible(false);
+    this.endText = this.add.text(W / 2, H / 2, '', {
+      fontSize: '8px', fontFamily: 'monospace', color: '#ffffff', align: 'center', lineSpacing: 4
+    }).setOrigin(0.5).setDepth(101).setVisible(false);
+  }
+
+  // --- BACKGROUND ---
+  drawBackground() {
+    // Sky gradient (simple rects)
+    for (let i = 0; i < H; i++) {
+      const c = Phaser.Display.Color.Interpolate.ColorWithColor(
+        { r: 0x22, g: 0x22, b: 0x55 }, { r: 0x44, g: 0x33, b: 0x66 }, H, i
+      );
+      this.add.rectangle(W / 2, i, W * 5, 1, Phaser.Display.Color.GetColor(c.r, c.g, c.b)).setDepth(-10).setScrollFactor(0.1);
+    }
+    // Buildings (parallax)
+    for (let i = 0; i < 20; i++) {
+      const bw = 20 + Math.random() * 30;
+      const bh = 30 + Math.random() * 50;
+      const bx = i * 80 - 40;
+      const r = this.add.rectangle(bx, LANE_TOP - bh / 2 + 10, bw, bh, COLORS.building + Math.floor(Math.random() * 0x111111))
+        .setDepth(-5).setScrollFactor(0.3);
+      // Windows
+      for (let wy = 0; wy < bh - 8; wy += 8) {
+        for (let wx = 4; wx < bw - 4; wx += 7) {
+          this.add.rectangle(bx - bw/2 + wx + 2, LANE_TOP - bh + 10 + wy + 4, 3, 4,
+            Math.random() > 0.4 ? 0xffff88 : 0x444466).setDepth(-4).setScrollFactor(0.3);
+        }
+      }
+    }
+    // Street
+    this.add.rectangle(W * 2.5, LANE_TOP + 40, W * 6, 80, COLORS.street).setDepth(-3).setScrollFactor(1);
+    // Lane lines
+    for (let i = 0; i < 40; i++) {
+      this.add.rectangle(i * 40, GROUND_Y + 5, 15, 2, 0x666677).setDepth(-2).setScrollFactor(1);
+    }
+  }
+
+  // --- PLAYER ---
+  createPlayer() {
+    const p = this.add.sprite(40, GROUND_Y, 'player').setDepth(10);
+    p.hp = 100;
+    p.maxHp = 100;
+    p.damageMult = 1;
+    return p;
+  }
+
+  // --- UI ---
+  createUI() {
+    // Player HP bar
+    this.hpBarBg = this.add.rectangle(4, 4, 60, 6, COLORS.hpBg).setOrigin(0).setScrollFactor(0).setDepth(50);
+    this.hpBar = this.add.rectangle(4, 4, 60, 6, COLORS.hpGreen).setOrigin(0).setScrollFactor(0).setDepth(51);
+    this.hpLabel = this.add.text(4, 11, 'FACT-CHECKER', { fontSize: '5px', fontFamily: 'monospace', color: '#88ccff' })
+      .setScrollFactor(0).setDepth(51);
+
+    // Boss HP bar (hidden initially)
+    this.bossHpBg = this.add.rectangle(W - 64, 4, 60, 6, COLORS.hpBg).setOrigin(0).setScrollFactor(0).setDepth(50).setVisible(false);
+    this.bossHpBar = this.add.rectangle(W - 64, 4, 60, 6, COLORS.hpRed).setOrigin(0).setScrollFactor(0).setDepth(51).setVisible(false);
+    this.bossHpLabel = this.add.text(W - 64, 11, '', { fontSize: '5px', fontFamily: 'monospace', color: '#ff8888' })
+      .setScrollFactor(0).setDepth(51).setVisible(false);
+
+    // Score + timer
+    this.scoreText = this.add.text(W / 2, 2, 'SCORE: 0', {
+      fontSize: '6px', fontFamily: 'monospace', color: '#ffffff'
+    }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(51);
+    this.timerText = this.add.text(W / 2, 10, '', {
+      fontSize: '5px', fontFamily: 'monospace', color: '#aaaaaa'
+    }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(51);
+  }
+
+  // --- ENEMY SPAWNING ---
+  spawnEnemy(type, x, y) {
+    const e = this.add.sprite(x, y, type).setDepth(9);
+    e.enemyType = type;
+    e.hp = type === 'bruiser' ? 30 : 20;
+    e.maxHp = e.hp;
+    e.speed = type === 'bruiser' ? 0.6 : type === 'shouter' ? 0.3 : 0.4;
+    e.attackCooldown = 0;
+    e.attackRange = type === 'shouter' ? 100 : type === 'columnist' ? 50 : 20;
+    e.stunTimer = 0;
+    e.hitTimer = 0;
+    e.dir = -1;
+
+    // Name label
+    e.nameLabel = this.add.text(x, y - 14, CONFIG.enemyNames[type] || type, {
+      fontSize: '4px', fontFamily: 'monospace', color: '#ffffff', backgroundColor: '#00000088'
+    }).setOrigin(0.5).setDepth(9);
+
+    // HP bar
+    e.hpBg = this.add.rectangle(x - 8, y - 11, 16, 2, COLORS.hpBg).setDepth(9);
+    e.hpFill = this.add.rectangle(x - 8, y - 11, 16, 2, COLORS.hpRed).setOrigin(0, 0.5).setDepth(9);
+
+    this.enemies.push(e);
+    return e;
+  }
+
+  spawnWave(waveDef) {
+    const camX = this.cameras.main.scrollX;
+    waveDef.enemies.forEach(eg => {
+      for (let i = 0; i < eg.count; i++) {
+        const x = camX + W + 20 + Math.random() * 40;
+        const y = LANE_TOP + 20 + Math.random() * (LANE_BOT - LANE_TOP - 20);
+        this.spawnEnemy(eg.type, x, y);
+      }
+    });
+  }
+
+  // --- BOSS ---
+  spawnBoss() {
+    const camX = this.cameras.main.scrollX;
+    this.boss = this.add.sprite(camX + W - 30, GROUND_Y - 5, 'boss').setDepth(10);
+    this.boss.hp = 120;
+    this.boss.maxHp = 120;
+    this.boss.stunTimer = 0;
+    this.boss.hitTimer = 0;
+    this.boss.attackCooldown = 60;
+    this.boss.dir = -1;
+    this.boss.dashTimer = 0;
+    this.boss.windupTimer = 0;
+    this.bossPhase = 1;
+    this.bossShoutTimer = 0;
+
+    this.bossHpBg.setVisible(true);
+    this.bossHpBar.setVisible(true);
+    this.bossHpLabel.setText('VLADIMIR IMPUDENT').setVisible(true);
+
+    // Boss shout text
+    this.bossShoutText = this.add.text(this.boss.x, this.boss.y - 25, '', {
+      fontSize: '5px', fontFamily: 'monospace', color: '#ffff44', backgroundColor: '#000000cc',
+      padding: { x: 2, y: 1 }, wordWrap: { width: 80 }
+    }).setOrigin(0.5).setDepth(20);
+
+    this.showBossShout();
+  }
+
+  getBossLines() {
+    const lines = [...CONFIG.bossLinesParody];
+    if (CONFIG.bossLinesOptionalRealQuotes.length > 0) {
+      lines.push(...CONFIG.bossLinesOptionalRealQuotes);
+    }
+    return lines;
+  }
+
+  showBossShout() {
+    if (!this.boss || !this.bossShoutText) return;
+    const lines = this.getBossLines();
+    const line = lines[Math.floor(Math.random() * lines.length)];
+    this.bossShoutText.setText(line);
+    this.bossShoutTimer = 480; // ~8 seconds at 60fps
+  }
+
+  // --- PROJECTILE ---
+  spawnProjectile(x, y, vx, vy, fromBoss = false) {
+    const p = this.add.sprite(x, y, 'bubble').setDepth(11);
+    p.vx = vx;
+    p.vy = vy;
+    p.fromBoss = fromBoss;
+    p.life = 300;
+    const txt = CONFIG.bubbleTexts[Math.floor(Math.random() * CONFIG.bubbleTexts.length)];
+    p.label = this.add.text(x, y, txt, {
+      fontSize: '4px', fontFamily: 'monospace', color: '#333333'
+    }).setOrigin(0.5).setDepth(12);
+    this.projectiles.push(p);
+    return p;
+  }
+
+  // --- DOUBT CLOUD ---
+  spawnDoubtCloud(x, y) {
+    const c = this.add.sprite(x, y, 'doubtcloud').setDepth(8).setAlpha(0.5);
+    c.life = 300;
+    this.doubtClouds.push(c);
+    return c;
+  }
+
+  // --- HIT EFFECTS ---
+  spawnSpark(x, y) {
+    const s = this.add.sprite(x, y, 'spark').setDepth(15);
+    this.tweens.add({ targets: s, alpha: 0, scaleX: 1.5, scaleY: 1.5, duration: 200, onComplete: () => s.destroy() });
+  }
+
+  spawnConfetti(x, y) {
+    for (let i = 0; i < 8; i++) {
+      const c = this.add.sprite(x, y, 'confetti').setDepth(15).setTint(
+        [0xff4444, 0x44ff44, 0x4444ff, 0xffff44, 0xff44ff][Math.floor(Math.random() * 5)]
+      );
+      this.tweens.add({
+        targets: c, x: x + (Math.random() - 0.5) * 40, y: y - 10 - Math.random() * 30,
+        alpha: 0, duration: 400 + Math.random() * 200, onComplete: () => c.destroy()
+      });
+    }
+  }
+
+  // --- DAMAGE CALC ---
+  getPlayerDamage(base) {
+    let d = base * this.player.damageMult;
+    // Check if in doubt cloud
+    for (const c of this.doubtClouds) {
+      if (c.active && Phaser.Math.Distance.Between(this.player.x, this.player.y, c.x, c.y) < 30) {
+        d *= 0.5;
+        break;
+      }
+    }
+    return Math.max(1, Math.floor(d));
+  }
+
+  // --- UPDATE ---
+  update(time, delta) {
+    const dt = delta / 1000;
+
+    // Screen shake
+    if (this.shakeTimer > 0) {
+      this.shakeTimer--;
+      this.cameras.main.setScroll(
+        this.cameras.main.scrollX + (Math.random() - 0.5) * 2,
+        (Math.random() - 0.5) * 2
+      );
+    }
+
+    // Title screen
+    if (this.gameState === 'title') {
+      this.titleFlash += dt;
+      this.titleSub.setAlpha(Math.sin(this.titleFlash * 3) * 0.5 + 0.5);
+      if (Phaser.Input.Keyboard.JustDown(this.keys.j)) {
+        audio.resume();
+        this.titleText.setVisible(false);
+        this.titleSub.setVisible(false);
+        this.gameState = 'tutorial';
+        this.tutorialTimer = 600; // 10 seconds at 60fps
+        this.showTutorial();
+        audio.startMusic();
+      }
+      return;
+    }
+
+    // Tutorial overlay
+    if (this.gameState === 'tutorial') {
+      this.tutorialTimer--;
+      if (this.tutorialTimer <= 0) {
+        this.tutorialBg.setVisible(false);
+        this.tutorialText.setVisible(false);
+        this.gameState = 'playing';
+      }
+      // Still allow movement during tutorial
+      this.updatePlayer(dt);
+      return;
+    }
+
+    // End screens
+    if (this.gameState === 'win' || this.gameState === 'lose') {
+      if (Phaser.Input.Keyboard.JustDown(this.keys.j)) {
+        this.scene.restart();
+      }
+      return;
+    }
+
+    // Game timer
+    this.gameTime += dt;
+    const mins = Math.floor(this.gameTime / 60);
+    const secs = Math.floor(this.gameTime % 60);
+    this.timerText.setText(`${mins}:${secs.toString().padStart(2, '0')}`);
+
+    // Wave spawning
+    if (this.gameState === 'playing') {
+      if (this.waveIndex < CONFIG.waveSchedule.length) {
+        const w = CONFIG.waveSchedule[this.waveIndex];
+        if (this.gameTime >= w.time) {
+          this.spawnWave(w);
+          this.waveIndex++;
+        }
+      }
+
+      // Camera scroll (slow auto-scroll during waves)
+      if (this.gameTime < 150) {
+        this.cameraOffsetX += 0.3;
+        this.cameras.main.scrollX = this.cameraOffsetX;
+      }
+
+      // Boss intro at ~150s or when all waves done and enemies cleared
+      const allWavesDone = this.waveIndex >= CONFIG.waveSchedule.length;
+      const noEnemies = this.enemies.filter(e => e.active).length === 0;
+      if ((this.gameTime >= 150 && noEnemies) || (allWavesDone && noEnemies && this.gameTime > 100)) {
+        this.gameState = 'bossIntro';
+        this.bossIntroTimer = 120; // 2 seconds
+        this.bossIntroText = this.add.text(W / 2, H / 2 - 10, 'WARNING!\nVLADIMIR IMPUDENT\nAPPROACHES!', {
+          fontSize: '8px', fontFamily: 'monospace', color: '#ff4444', align: 'center'
+        }).setOrigin(0.5).setScrollFactor(0).setDepth(80);
+      }
+    }
+
+    // Boss intro countdown
+    if (this.gameState === 'bossIntro') {
+      this.bossIntroTimer--;
+      this.updatePlayer(dt);
+      if (this.bossIntroTimer <= 0) {
+        this.bossIntroText.destroy();
+        this.gameState = 'bossFight';
+        this.spawnBoss();
+      }
+      return;
+    }
+
+    // Main gameplay + boss fight
+    this.updatePlayer(dt);
+    this.updateEnemies(dt);
+    this.updateBoss(dt);
+    this.updateProjectiles(dt);
+    this.updateDoubtClouds(dt);
+    this.updateUI();
+
+    // Check player death
+    if (this.player.hp <= 0 && this.gameState !== 'lose') {
+      this.gameState = 'lose';
+      audio.stopMusic();
+      audio.sfxLose();
+      this.showEndScreen(false);
+    }
+  }
+
+  // --- TUTORIAL ---
+  showTutorial() {
+    this.tutorialBg.setVisible(true);
+    this.tutorialText.setText(
+      'CONTROLS\n\n' +
+      'MOVE:  Arrow Keys / WASD\n' +
+      'JUMP:  K\n' +
+      'ATTACK: J (tap=punch, tap-tap=combo)\n' +
+      '        Hold J = charged hit\n' +
+      'BLOCK: L or Shift\n\n' +
+      'Defeat the waves of misinformation!\n' +
+      'Pop speech bubbles. Bonk myths.'
+    ).setVisible(true);
+  }
+
+  // --- PLAYER UPDATE ---
+  updatePlayer(dt) {
+    const p = this.player;
+    const spd = 1.5;
+
+    // Movement
+    let mx = 0, my = 0;
+    if (this.cursors.left.isDown || this.keys.a.isDown) mx = -1;
+    if (this.cursors.right.isDown || this.keys.d.isDown) mx = 1;
+    if (this.cursors.up.isDown || this.keys.w.isDown) my = -1;
+    if (this.cursors.down.isDown || this.keys.s.isDown) my = 1;
+
+    if (!this.isBlocking) {
+      p.x += mx * spd;
+      this.playerBaseY = Phaser.Math.Clamp(this.playerBaseY + my * spd * 0.7, LANE_TOP + 10, LANE_BOT);
+    }
+
+    // Keep player on screen
+    const camL = this.cameras.main.scrollX + 8;
+    const camR = this.cameras.main.scrollX + W - 8;
+    p.x = Phaser.Math.Clamp(p.x, camL, camR);
+
+    // Flip sprite
+    if (mx !== 0) p.setFlipX(mx < 0);
+
+    // Jump
+    if (Phaser.Input.Keyboard.JustDown(this.keys.k) && !this.isJumping) {
+      this.isJumping = true;
+      this.jumpVel = -4;
+    }
+    if (this.isJumping) {
+      this.jumpVel += 0.2; // gravity
+      p.y += this.jumpVel;
+      if (p.y >= this.playerBaseY) {
+        p.y = this.playerBaseY;
+        this.isJumping = false;
+        this.jumpVel = 0;
+      }
+    } else {
+      p.y = this.playerBaseY;
+    }
+
+    // Blocking
+    this.isBlocking = this.keys.l.isDown || this.keys.shift.isDown;
+    if (this.isBlocking) {
+      p.setTint(0x8888ff); // blue tint when blocking
+    } else {
+      p.clearTint();
+    }
+
+    // Attack
+    if (this.attackCooldown > 0) this.attackCooldown--;
+    if (this.comboWindow > 0) this.comboWindow--;
+    if (this.playerHitCooldown > 0) this.playerHitCooldown--;
+
+    // Charge detection
+    if (this.keys.j.isDown && !this.isBlocking) {
+      this.chargeTimer++;
+      if (this.chargeTimer > 30) {
+        this.isCharging = true;
+        p.setTint(0xffff44); // yellow glow while charging
+      }
+    }
+
+    if (Phaser.Input.Keyboard.JustUp(this.keys.j) && this.attackCooldown <= 0 && !this.isBlocking) {
+      if (this.isCharging && this.chargeTimer > 30) {
+        // Charged hit
+        this.performAttack(25, 25, true);
+        audio.sfxCharged();
+        this.isCharging = false;
+      } else if (this.comboWindow > 0 && this.comboCount >= 1) {
+        // Combo hit
+        this.performAttack(15, 20, false);
+        this.comboCount++;
+        if (this.comboCount >= 3) {
+          this.stats.combos++;
+          this.spawnConfetti(p.x + (p.flipX ? -15 : 15), p.y - 5);
+          audio.sfxCombo();
+          this.comboCount = 0;
+        } else {
+          audio.sfxPunch();
+        }
+      } else {
+        // Normal punch
+        this.performAttack(8, 18, false);
+        this.comboCount = 1;
+        audio.sfxPunch();
+      }
+      this.comboWindow = 30; // frames to continue combo
+      this.attackCooldown = 12;
+      this.chargeTimer = 0;
+    }
+
+    if (Phaser.Input.Keyboard.JustDown(this.keys.j)) {
+      this.chargeTimer = 0;
+      this.isCharging = false;
+    }
+
+    // Depth sorting
+    p.setDepth(10 + (p.y / H) * 0.1);
+  }
+
+  performAttack(damage, range, isCharged) {
+    const p = this.player;
+    const dir = p.flipX ? -1 : 1;
+    const ax = p.x + dir * range / 2;
+    const ay = p.y;
+
+    this.spawnSpark(p.x + dir * 12, p.y - 5);
+
+    // Hit enemies
+    for (const e of this.enemies) {
+      if (!e.active) continue;
+      const dist = Phaser.Math.Distance.Between(ax, ay, e.x, e.y);
+      if (dist < range) {
+        const dmg = this.getPlayerDamage(damage);
+        e.hp -= dmg;
+        e.hitTimer = 10;
+        e.x += dir * (isCharged ? 12 : 5); // knockback
+        e.setTint(0xffffff);
+        this.stats.mythsBonked++;
+        if (e.hp <= 0) this.killEnemy(e);
+      }
+    }
+
+    // Hit boss
+    if (this.boss && this.boss.active) {
+      const dist = Phaser.Math.Distance.Between(ax, ay, this.boss.x, this.boss.y);
+      if (dist < range + 8) {
+        const dmg = this.getPlayerDamage(damage);
+        this.boss.hp -= dmg;
+        this.boss.hitTimer = 10;
+        this.boss.x += dir * (isCharged ? 8 : 3);
+        this.boss.setTint(0xffffff);
+        audio.sfxBossHit();
+        this.shakeTimer = isCharged ? 8 : 3;
+
+        // Phase check
+        if (this.boss.hp <= this.boss.maxHp * 0.4 && this.bossPhase === 1) {
+          this.bossPhase = 2;
+          this.boss.setTint(COLORS.bossPhase2);
+          this.showBossShout();
+        }
+
+        // Boss death
+        if (this.boss.hp <= 0) {
+          this.boss.destroy();
+          if (this.bossShoutText) this.bossShoutText.destroy();
+          this.bossHpBg.setVisible(false);
+          this.bossHpBar.setVisible(false);
+          this.bossHpLabel.setVisible(false);
+          this.boss = null;
+          this.gameState = 'win';
+          audio.stopMusic();
+          audio.sfxWin();
+          this.shakeTimer = 15;
+          this.spawnConfetti(p.x, p.y - 10);
+          this.spawnConfetti(p.x + 20, p.y);
+          this.spawnConfetti(p.x - 20, p.y);
+          this.showEndScreen(true);
+        }
+      }
+    }
+
+    // Hit projectiles (pop bubbles)
+    for (const pr of this.projectiles) {
+      if (!pr.active) continue;
+      const dist = Phaser.Math.Distance.Between(ax, ay, pr.x, pr.y);
+      if (dist < range) {
+        pr.label.destroy();
+        pr.destroy();
+        this.stats.bubblesPopped++;
+        this.score += 50;
+      }
+    }
+  }
+
+  killEnemy(e) {
+    audio.sfxEnemyDie();
+    this.score += 100;
+    this.spawnSpark(e.x, e.y - 5);
+    if (e.nameLabel) e.nameLabel.destroy();
+    if (e.hpBg) e.hpBg.destroy();
+    if (e.hpFill) e.hpFill.destroy();
+    e.destroy();
+  }
+
+  // --- ENEMY AI ---
+  updateEnemies(dt) {
+    for (const e of this.enemies) {
+      if (!e.active) continue;
+
+      // Hit flash
+      if (e.hitTimer > 0) {
+        e.hitTimer--;
+        if (e.hitTimer <= 0) e.clearTint();
+      }
+      if (e.stunTimer > 0) { e.stunTimer--; continue; }
+      if (e.attackCooldown > 0) e.attackCooldown--;
+
+      const dx = this.player.x - e.x;
+      const dy = this.player.y - e.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      e.dir = dx > 0 ? 1 : -1;
+      e.setFlipX(e.dir < 0);
+
+      // Move toward player
+      if (dist > e.attackRange) {
+        e.x += (dx / dist) * e.speed;
+        e.y += (dy / dist) * e.speed * 0.5;
+        e.y = Phaser.Math.Clamp(e.y, LANE_TOP + 5, LANE_BOT);
+      }
+
+      // Attack
+      if (dist <= e.attackRange + 5 && e.attackCooldown <= 0) {
+        this.enemyAttack(e);
+      }
+
+      // Update labels/hp
+      if (e.nameLabel && e.nameLabel.active) {
+        e.nameLabel.setPosition(e.x, e.y - 14);
+      }
+      if (e.hpBg && e.hpBg.active) {
+        e.hpBg.setPosition(e.x, e.y - 11);
+        e.hpFill.setPosition(e.x - 8, e.y - 11);
+        e.hpFill.width = 16 * Math.max(0, e.hp / e.maxHp);
+      }
+
+      // Depth sort
+      e.setDepth(10 + (e.y / H) * 0.1);
+    }
+    // Clean up dead enemies
+    this.enemies = this.enemies.filter(e => e.active);
+  }
+
+  enemyAttack(e) {
+    const type = e.enemyType;
+    if (type === 'bruiser') {
+      // Rush + grab: quick lunge
+      e.x += e.dir * 8;
+      this.hitPlayer(8, e);
+      e.attackCooldown = 90;
+    } else if (type === 'columnist') {
+      // Shove + speech bubble stun
+      this.hitPlayer(5, e);
+      // Show a "HOT TAKE" bubble briefly
+      const ht = this.add.text(e.x + e.dir * 10, e.y - 15, 'HOT TAKE!', {
+        fontSize: '5px', fontFamily: 'monospace', color: '#ff8800', backgroundColor: '#000000aa', padding: { x: 1, y: 1 }
+      }).setOrigin(0.5).setDepth(20);
+      this.tweens.add({ targets: ht, alpha: 0, y: e.y - 30, duration: 800, onComplete: () => ht.destroy() });
+      e.attackCooldown = 120;
+    } else if (type === 'shouter') {
+      // Ranged projectile
+      this.spawnProjectile(e.x, e.y - 5, e.dir * 1.2, 0);
+      e.attackCooldown = 150;
+    } else if (type === 'lobbyist') {
+      // Spawn doubt cloud
+      this.spawnDoubtCloud(this.player.x + (Math.random() - 0.5) * 40, this.player.y);
+      e.attackCooldown = 200;
+    }
+  }
+
+  hitPlayer(damage, source) {
+    if (this.playerHitCooldown > 0) return;
+    if (this.isBlocking) {
+      audio.sfxBlock();
+      damage = Math.floor(damage * 0.2);
+    }
+    this.player.hp -= damage;
+    this.playerHitCooldown = 30;
+    this.player.setTint(0xff4444);
+    this.time.delayedCall(200, () => {
+      if (this.player.active && !this.isBlocking) this.player.clearTint();
+    });
+    this.shakeTimer = 3;
+  }
+
+  // --- BOSS AI ---
+  updateBoss(dt) {
+    if (!this.boss || !this.boss.active) return;
+    const b = this.boss;
+
+    // Hit flash
+    if (b.hitTimer > 0) {
+      b.hitTimer--;
+      if (b.hitTimer <= 0) {
+        b.setTint(this.bossPhase === 2 ? COLORS.bossPhase2 : 0xffffff);
+        b.clearTint();
+      }
+    }
+
+    // Shout timer
+    if (this.bossShoutTimer > 0) {
+      this.bossShoutTimer--;
+      if (this.bossShoutTimer <= 0) this.showBossShout();
+    }
+    if (this.bossShoutText && this.bossShoutText.active) {
+      this.bossShoutText.setPosition(b.x, b.y - 25);
+    }
+
+    if (b.stunTimer > 0) { b.stunTimer--; return; }
+    if (b.attackCooldown > 0) b.attackCooldown--;
+
+    const dx = this.player.x - b.x;
+    const dy = this.player.y - b.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    b.dir = dx > 0 ? 1 : -1;
+    b.setFlipX(b.dir < 0);
+
+    const moveSpd = this.bossPhase === 2 ? 0.8 : 0.4;
+
+    // Dash (phase 2 only)
+    if (b.dashTimer > 0) {
+      b.dashTimer--;
+      b.x += b.dir * 3;
+      b.x = Phaser.Math.Clamp(b.x, this.cameras.main.scrollX + 10, this.cameras.main.scrollX + W - 10);
+      return;
+    }
+
+    // Move toward player
+    if (dist > 30) {
+      b.x += (dx / dist) * moveSpd;
+      b.y += (dy / dist) * moveSpd * 0.5;
+      b.y = Phaser.Math.Clamp(b.y, LANE_TOP + 5, LANE_BOT);
+    }
+
+    // Attack
+    if (b.attackCooldown <= 0) {
+      if (this.bossPhase === 2 && Math.random() < 0.3) {
+        // Dash attack
+        b.dashTimer = 20;
+        b.attackCooldown = 90;
+
+        // Show windup
+        const wt = this.add.text(b.x, b.y - 20, '!!', {
+          fontSize: '8px', fontFamily: 'monospace', color: '#ff0000'
+        }).setOrigin(0.5).setDepth(25);
+        this.tweens.add({ targets: wt, alpha: 0, duration: 400, onComplete: () => wt.destroy() });
+      } else if (this.bossPhase === 2 && Math.random() < 0.4 && dist > 40) {
+        // 3-bubble spread
+        const wt = this.add.text(b.x, b.y - 20, '!!!', {
+          fontSize: '8px', fontFamily: 'monospace', color: '#ff4400'
+        }).setOrigin(0.5).setDepth(25);
+        this.tweens.add({ targets: wt, alpha: 0, duration: 500, onComplete: () => wt.destroy() });
+        this.time.delayedCall(300, () => {
+          if (!this.boss) return;
+          this.spawnProjectile(b.x, b.y - 5, b.dir * 1.5, -0.5, true);
+          this.spawnProjectile(b.x, b.y - 5, b.dir * 1.5, 0, true);
+          this.spawnProjectile(b.x, b.y - 5, b.dir * 1.5, 0.5, true);
+        });
+        b.attackCooldown = 120;
+      } else if (dist < 35) {
+        // Heavy punch with windup
+        const wt = this.add.text(b.x + b.dir * 10, b.y - 15, '!', {
+          fontSize: '10px', fontFamily: 'monospace', color: '#ff0000'
+        }).setOrigin(0.5).setDepth(25);
+        this.tweens.add({ targets: wt, alpha: 0, duration: 300, onComplete: () => wt.destroy() });
+
+        this.time.delayedCall(400, () => {
+          if (!this.boss) return;
+          const pdist = Phaser.Math.Distance.Between(this.player.x, this.player.y, b.x, b.y);
+          if (pdist < 40) {
+            this.hitPlayer(this.bossPhase === 2 ? 15 : 10, b);
+            this.spawnSpark(this.player.x, this.player.y - 5);
+          }
+        });
+        b.attackCooldown = this.bossPhase === 2 ? 70 : 100;
+      } else {
+        b.attackCooldown = 30; // wait and close distance
+      }
+    }
+
+    // Keep boss on screen
+    b.x = Phaser.Math.Clamp(b.x, this.cameras.main.scrollX + 10, this.cameras.main.scrollX + W - 10);
+
+    // Update boss HP bar
+    this.bossHpBar.width = 60 * Math.max(0, b.hp / b.maxHp);
+  }
+
+  // --- PROJECTILES ---
+  updateProjectiles(dt) {
+    for (const p of this.projectiles) {
+      if (!p.active) continue;
+      p.x += p.vx;
+      p.y += p.vy;
+      p.life--;
+      if (p.label && p.label.active) p.label.setPosition(p.x, p.y);
+
+      // Hit player
+      const dist = Phaser.Math.Distance.Between(p.x, p.y, this.player.x, this.player.y);
+      if (dist < 12) {
+        this.hitPlayer(p.fromBoss ? 10 : 5, null);
+        this.stats.bubblesPopped++;
+        if (p.label) p.label.destroy();
+        p.destroy();
+        continue;
+      }
+
+      // Off screen or expired
+      if (p.life <= 0 || p.x < this.cameras.main.scrollX - 30 || p.x > this.cameras.main.scrollX + W + 30) {
+        if (p.label) p.label.destroy();
+        p.destroy();
+      }
+    }
+    this.projectiles = this.projectiles.filter(p => p.active);
+  }
+
+  // --- DOUBT CLOUDS ---
+  updateDoubtClouds(dt) {
+    for (const c of this.doubtClouds) {
+      if (!c.active) continue;
+      c.life--;
+      c.setAlpha(0.3 + Math.sin(c.life * 0.1) * 0.15);
+      if (c.life <= 0) c.destroy();
+    }
+    this.doubtClouds = this.doubtClouds.filter(c => c.active);
+  }
+
+  // --- UI ---
+  updateUI() {
+    // Player HP
+    this.hpBar.width = 60 * Math.max(0, this.player.hp / this.player.maxHp);
+    const hpPct = this.player.hp / this.player.maxHp;
+    this.hpBar.fillColor = hpPct > 0.5 ? COLORS.hpGreen : (hpPct > 0.25 ? COLORS.yellow : COLORS.hpRed);
+
+    // Score
+    this.scoreText.setText(`SCORE: ${this.score}`);
+  }
+
+  // --- END SCREEN ---
+  showEndScreen(won) {
+    this.endBg.setVisible(true);
+    if (won) {
+      this.endText.setText(
+        'VERIFIED!\n\n' +
+        `Score: ${this.score}\n` +
+        `Combos: ${this.stats.combos}\n` +
+        `Bubbles Popped: ${this.stats.bubblesPopped}\n` +
+        `Myths Bonked: ${this.stats.mythsBonked}\n\n` +
+        'Press J to play again'
+      ).setVisible(true);
+      this.endText.setColor('#44ff44');
+    } else {
+      this.endText.setText(
+        'MISLED... TRY AGAIN\n\n' +
+        `Score: ${this.score}\n` +
+        `Myths Bonked: ${this.stats.mythsBonked}\n\n` +
+        'Press J to restart'
+      ).setVisible(true);
+      this.endText.setColor('#ff4444');
+    }
+  }
+}
+
+// ============================================================
+// PHASER CONFIG
+// ============================================================
+const game = new Phaser.Game({
+  type: Phaser.AUTO,
+  width: W,
+  height: H,
+  zoom: SCALE,
+  pixelArt: true,
+  backgroundColor: '#222244',
+  physics: { default: 'none' },
+  scene: [GameScene],
+  parent: document.body,
+  scale: {
+    mode: Phaser.Scale.FIT,
+    autoCenter: Phaser.Scale.CENTER_BOTH,
+  },
+});
+</script>
+</body>
+</html>
