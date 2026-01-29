@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Information Fighter</title>
+<title>Disinformation Fighter</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { background: #000; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; }
@@ -531,8 +531,8 @@ class GameScene extends Phaser.Scene {
 
     // Title screen — NES Double Dragon title style
     this.titleBg = this.add.rectangle(W / 2, H / 2, W, H, NES.black).setDepth(99);
-    this.titleText = this.add.text(W / 2, 35, 'INFORMATION\n    FIGHTER', {
-      fontSize: '18px', fontFamily: 'monospace', color: '#f83800', align: 'center',
+    this.titleText = this.add.text(W / 2, 35, 'DISINFORMATION\n      FIGHTER', {
+      fontSize: '16px', fontFamily: 'monospace', color: '#f83800', align: 'center',
       stroke: '#000000', strokeThickness: 2
     }).setOrigin(0.5).setDepth(100);
     this.titleSub = this.add.text(W / 2, 85, '— FIGHT MISINFORMATION —', {
@@ -657,11 +657,16 @@ class GameScene extends Phaser.Scene {
       fontSize: '5px', fontFamily: 'monospace', color: '#f83800'
     }).setScrollFactor(0).setDepth(51).setVisible(false);
 
-    // Score + timer (top center, NES style)
-    this.scoreText = this.add.text(W / 2, 2, 'SCORE 0', {
-      fontSize: '7px', fontFamily: 'monospace', color: '#fcfcfc'
+    // Game title (persistent during play)
+    this.add.text(W / 2, 2, 'DISINFORMATION FIGHTER', {
+      fontSize: '5px', fontFamily: 'monospace', color: '#f83800'
     }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(51);
-    this.timerText = this.add.text(W / 2, 11, '', {
+
+    // Score + timer (top center, NES style)
+    this.scoreText = this.add.text(W / 2, 9, 'SCORE 0', {
+      fontSize: '6px', fontFamily: 'monospace', color: '#fcfcfc'
+    }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(51);
+    this.timerText = this.add.text(W / 2, 16, '', {
       fontSize: '5px', fontFamily: 'monospace', color: '#bcbcbc'
     }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(51);
   }
