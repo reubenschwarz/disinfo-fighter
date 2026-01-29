@@ -159,137 +159,377 @@ const audio = new ChipAudio();
 // 16-BIT TEXTURE GENERATION (SNES / Streets of Rage style)
 // ============================================================
 function genTextures(scene) {
-  // Helper: draw a shaded rect (3-shade for 16-bit feel)
-  function sRect(g, x, y, w, h, dark, mid, light) {
-    g.fillStyle(dark);  g.fillRect(x, y, w, h);
-    g.fillStyle(mid);   g.fillRect(x + 1, y + 1, w - 2, h - 2);
-    g.fillStyle(light); g.fillRect(x + 2, y + 1, w - 4, Math.floor(h / 3));
-  }
-
-  // --- PLAYER STAND (48x56) — muscular brawler, Streets of Rage style ---
-  const pg = scene.make.graphics({ add: false });
-  // Hair
-  sRect(pg, 15, 0, 18, 8, PAL.hairDark, PAL.hair, PAL.hairLight);
-  pg.fillStyle(PAL.hairDark); pg.fillRect(14, 2, 2, 4); pg.fillRect(33, 2, 3, 5); pg.fillRect(35, 3, 2, 3);
-  // Head/face
-  sRect(pg, 16, 6, 16, 14, PAL.skinDark, PAL.skin, PAL.skinLight);
-  // Eyes
-  pg.fillStyle(PAL.white); pg.fillRect(19, 11, 4, 3); pg.fillRect(26, 11, 4, 3);
-  pg.fillStyle(PAL.blueDark); pg.fillRect(20, 11, 2, 3); pg.fillRect(27, 11, 2, 3);
-  pg.fillStyle(PAL.black); pg.fillRect(21, 12, 1, 2); pg.fillRect(28, 12, 1, 2);
-  // Mouth
-  pg.fillStyle(PAL.skinDark); pg.fillRect(22, 16, 5, 1);
-  // Torso (blue sleeveless)
-  sRect(pg, 12, 20, 24, 16, PAL.blueDark, PAL.blue, PAL.blueLight);
-  // Chest detail
-  pg.fillStyle(PAL.blueBright); pg.fillRect(18, 22, 12, 2);
-  // Arms (bare skin — muscular)
-  sRect(pg, 4, 21, 9, 14, PAL.skinDark, PAL.skin, PAL.skinLight);
-  sRect(pg, 35, 21, 9, 14, PAL.skinDark, PAL.skin, PAL.skinLight);
-  // Fists
-  sRect(pg, 5, 33, 7, 5, PAL.skinDark, PAL.skin, PAL.skinLight);
-  sRect(pg, 36, 33, 7, 5, PAL.skinDark, PAL.skin, PAL.skinLight);
-  // Belt
-  sRect(pg, 13, 36, 22, 3, PAL.yellowDark, PAL.yellow, PAL.yellowLight);
-  pg.fillStyle(PAL.yellowBright); pg.fillRect(22, 36, 4, 3); // buckle
-  // Pants
-  sRect(pg, 13, 39, 10, 12, PAL.redDark, PAL.red, PAL.redLight);
-  sRect(pg, 25, 39, 10, 12, PAL.redDark, PAL.red, PAL.redLight);
-  // Boots
-  sRect(pg, 12, 49, 11, 6, PAL.brownDark, PAL.brown, PAL.brownLight);
-  sRect(pg, 25, 49, 11, 6, PAL.brownDark, PAL.brown, PAL.brownLight);
-  // Clipboard
-  pg.fillStyle(PAL.white); pg.fillRect(40, 26, 7, 9);
-  pg.fillStyle(PAL.midGrey); pg.fillRect(41, 27, 5, 1); pg.fillRect(41, 29, 5, 1); pg.fillRect(41, 31, 5, 1);
-  pg.fillStyle(PAL.black); pg.fillRect(40, 25, 7, 2);
-  pg.generateTexture('player', 48, 56);
-  pg.destroy();
-
-  // --- PLAYER KICK POSE (48x56) ---
-  const pk = scene.make.graphics({ add: false });
-  // Same head/torso but leg extended
-  sRect(pk, 15, 0, 18, 8, PAL.hairDark, PAL.hair, PAL.hairLight);
-  pk.fillStyle(PAL.hairDark); pk.fillRect(14, 2, 2, 4); pk.fillRect(33, 2, 3, 5);
-  sRect(pk, 16, 6, 16, 14, PAL.skinDark, PAL.skin, PAL.skinLight);
-  pk.fillStyle(PAL.white); pk.fillRect(19, 11, 4, 3); pk.fillRect(26, 11, 4, 3);
-  pk.fillStyle(PAL.blueDark); pk.fillRect(20, 11, 2, 3); pk.fillRect(27, 11, 2, 3);
-  pk.fillStyle(PAL.black); pk.fillRect(21, 12, 1, 2); pk.fillRect(28, 12, 1, 2);
-  sRect(pk, 12, 20, 24, 16, PAL.blueDark, PAL.blue, PAL.blueLight);
-  sRect(pk, 4, 21, 9, 14, PAL.skinDark, PAL.skin, PAL.skinLight);
-  sRect(pk, 35, 21, 9, 14, PAL.skinDark, PAL.skin, PAL.skinLight);
-  sRect(pk, 5, 33, 7, 5, PAL.skinDark, PAL.skin, PAL.skinLight);
-  sRect(pk, 36, 33, 7, 5, PAL.skinDark, PAL.skin, PAL.skinLight);
-  sRect(pk, 13, 36, 22, 3, PAL.yellowDark, PAL.yellow, PAL.yellowLight);
-  // Standing leg (tucked)
-  sRect(pk, 13, 39, 10, 10, PAL.redDark, PAL.red, PAL.redLight);
-  sRect(pk, 12, 47, 11, 6, PAL.brownDark, PAL.brown, PAL.brownLight);
-  // Extended kick leg (horizontal)
-  sRect(pk, 25, 42, 18, 6, PAL.redDark, PAL.red, PAL.redLight);
-  sRect(pk, 41, 42, 7, 6, PAL.brownDark, PAL.brown, PAL.brownLight);
-  pk.generateTexture('player_kick', 48, 56);
-  pk.destroy();
-
-  // --- 16-BIT ENEMIES (36x48 each) ---
-  function draw16Enemy(key, shirtDk, shirtMd, shirtLt, pantsDk, pantsMd, w, h, bulky) {
+  // ==========================================================
+  // PIXEL-MAP RENDERER — each char maps to a palette color,
+  // rendered at 2×2 pixels per cell for authentic 16-bit look
+  // ==========================================================
+  function renderPixelMap(key, grid, palette, texW, texH) {
+    const scale = 2;
+    const cols = texW / scale, rows = texH / scale;
     const g = scene.make.graphics({ add: false });
-    const cx = Math.floor(w / 2);
-    const bw = bulky ? 24 : 18;
-    // Head
-    sRect(g, cx - 7, 2, 14, 12, PAL.skinDark, PAL.skin, PAL.skinLight);
-    // Hair
-    g.fillStyle(PAL.black); g.fillRect(cx - 7, 0, 14, 4);
-    // Eyes
-    g.fillStyle(PAL.white); g.fillRect(cx - 4, 7, 3, 2); g.fillRect(cx + 2, 7, 3, 2);
-    g.fillStyle(PAL.black); g.fillRect(cx - 3, 7, 1, 2); g.fillRect(cx + 3, 7, 1, 2);
-    // Body
-    sRect(g, cx - bw/2, 14, bw, 14, shirtDk, shirtMd, shirtLt);
-    // Arms
-    sRect(g, cx - bw/2 - 5, 15, 6, 12, PAL.skinDark, PAL.skin, PAL.skinLight);
-    sRect(g, cx + bw/2 - 1, 15, 6, 12, PAL.skinDark, PAL.skin, PAL.skinLight);
-    // Belt
-    g.fillStyle(PAL.darkGrey); g.fillRect(cx - bw/2 + 1, 28, bw - 2, 2);
-    // Pants
-    sRect(g, cx - 7, 30, 6, 10, pantsDk, pantsMd, pantsMd);
-    sRect(g, cx + 1, 30, 6, 10, pantsDk, pantsMd, pantsMd);
-    // Boots
-    sRect(g, cx - 8, 39, 7, 5, PAL.brownDark, PAL.brown, PAL.brownLight);
-    sRect(g, cx + 1, 39, 7, 5, PAL.brownDark, PAL.brown, PAL.brownLight);
-    g.generateTexture(key, w, h);
+    for (let r = 0; r < rows; r++) {
+      const row = grid[r] || '';
+      for (let c = 0; c < cols; c++) {
+        const ch = row[c];
+        if (!ch || ch === '.' || ch === ' ') continue;
+        const color = palette[ch];
+        if (color === undefined) continue;
+        g.fillStyle(color);
+        g.fillRect(c * scale, r * scale, scale, scale);
+      }
+    }
+    g.generateTexture(key, texW, texH);
     g.destroy();
   }
-  draw16Enemy('bruiser', PAL.redDark, PAL.red, PAL.redLight, PAL.darkGrey, PAL.midGrey, 36, 48, true);
-  draw16Enemy('columnist', PAL.brownDark, PAL.brown, PAL.tan, 0x183848, 0x2a5a6a, 32, 48, false);
-  draw16Enemy('shouter', PAL.purpleDark, PAL.purple, PAL.purpleLight, PAL.darkGrey, PAL.midGrey, 32, 48, false);
-  draw16Enemy('lobbyist', PAL.greenDark, PAL.green, PAL.greenLight, PAL.brownDark, PAL.brown, 32, 48, false);
 
-  // --- BOSS BODY (no pixel head — head will be photo) (48x60) ---
-  const bg = scene.make.graphics({ add: false });
-  // Neck stub (so photo head sits on top)
-  bg.fillStyle(PAL.skin); bg.fillRect(18, 0, 12, 6);
-  // Military jacket
-  sRect(bg, 8, 6, 32, 22, PAL.oliveDark, PAL.olive, PAL.oliveLight);
-  // Epaulettes
-  sRect(bg, 6, 6, 6, 4, PAL.yellowDark, PAL.yellow, PAL.yellowLight);
-  sRect(bg, 36, 6, 6, 4, PAL.yellowDark, PAL.yellow, PAL.yellowLight);
-  // Medals
-  bg.fillStyle(PAL.yellow); bg.fillRect(12, 10, 4, 3); bg.fillRect(12, 14, 4, 3);
-  bg.fillStyle(PAL.red); bg.fillRect(18, 10, 4, 3); bg.fillRect(18, 14, 4, 3);
-  bg.fillStyle(PAL.white); bg.fillRect(24, 10, 4, 3);
-  // Arms
-  sRect(bg, 2, 8, 7, 16, PAL.oliveDark, PAL.olive, PAL.oliveLight);
-  sRect(bg, 39, 8, 7, 16, PAL.oliveDark, PAL.olive, PAL.oliveLight);
-  bg.fillStyle(PAL.skin); bg.fillRect(2, 22, 7, 4); bg.fillRect(39, 22, 7, 4);
-  // Belt
-  sRect(bg, 9, 28, 30, 3, PAL.brownDark, PAL.brown, PAL.brownLight);
-  bg.fillStyle(PAL.yellowLight); bg.fillRect(21, 28, 6, 3);
-  // Pants
-  sRect(bg, 10, 31, 12, 16, PAL.darkGrey, PAL.midGrey, PAL.midGrey);
-  sRect(bg, 26, 31, 12, 16, PAL.darkGrey, PAL.midGrey, PAL.midGrey);
-  // Boots
-  sRect(bg, 9, 46, 13, 7, PAL.black, 0x1a1a1a, 0x2a2a2a);
-  sRect(bg, 26, 46, 13, 7, PAL.black, 0x1a1a1a, 0x2a2a2a);
-  bg.generateTexture('boss_body', 48, 54);
-  bg.destroy();
+  // ----------------------------------------------------------
+  // SHARED PALETTES
+  // ----------------------------------------------------------
+  const skinPal = {
+    'O': PAL.black,       // outline
+    'S': PAL.skinDark,    // skin shadow
+    's': PAL.skin,        // skin mid
+    'h': PAL.skinLight,   // skin highlight
+  };
+  const eyePal = {
+    'W': PAL.white,       // eye white
+    'E': PAL.blueDark,    // iris
+    'P': PAL.black,       // pupil
+  };
+
+  // ==========================================================
+  // PLAYER — STAND (24×28 grid → 48×56 rendered)
+  // Muscular brawler: brown hair, blue tank top, red pants,
+  // brown boots, clipboard in right hand
+  // ==========================================================
+  const playerPal = {
+    ...skinPal, ...eyePal,
+    'H': PAL.hairDark,    // hair dark
+    'A': PAL.hair,        // hair mid
+    'a': PAL.hairLight,   // hair highlight
+    'B': PAL.blueDark,    // shirt dark
+    'b': PAL.blue,        // shirt mid
+    'c': PAL.blueLight,   // shirt highlight
+    'i': PAL.blueBright,  // shirt specular
+    'R': PAL.redDark,     // pants dark
+    'r': PAL.red,         // pants mid
+    'e': PAL.redLight,    // pants highlight
+    'D': PAL.brownDark,   // boot/belt dark
+    'd': PAL.brown,       // boot mid
+    'f': PAL.brownLight,  // boot highlight
+    'Y': PAL.yellowDark,  // belt dark
+    'y': PAL.yellow,      // belt mid
+    'z': PAL.yellowLight, // belt highlight
+    'Z': PAL.yellowBright,// buckle
+    'w': PAL.white,       // clipboard / eye
+    'g': PAL.midGrey,     // clipboard lines
+    'M': PAL.darkGrey,    // mouth shadow
+  };
+  const playerGrid = [
+    '........HAAAaaA.........',
+    '.......HAaaaaaAH........',
+    '......HAaaaaaaaAH.......',
+    '......HAaaaaaaaAH.......',
+    '.......OsshhssO.........',
+    '......OsshhhhhsO........',
+    '......OshhhhhhhO........',
+    '......OshhhhhhhO........',
+    '......OsWWEPWWEPO.......',
+    '......OsWWEPWWEPO.......',
+    '......OsshhhhhssO.......',
+    '......OssSMMMSssO.......',
+    '......OssShhhSssO.......',
+    '.......OSsssssSO........',
+    '..OOO..OBBbbBO..OOO....',
+    '.OhsSOOBBbbbbBOOSshO...',
+    '.OhssOBBcbbbcbBOsshO...',
+    '.OsssOBbiibbiiBOsssO...',
+    '.OsssOBBbbbbbbBOsssO...',
+    '.OssSBBBbbbbbbBBSssO...',
+    '.OSsSOBBbbbbbbBOSsSOwww',
+    '..OSO.OYYyzZYYO.OSO.Ogw',
+    '......OYYyzZYYO.....Owgw',
+    '......ORrreeRrO.....Ogw',
+    '......ORrreeRrO.....Owgw',
+    '......ORrROORrO.....Oww',
+    '......ODddOODdO........',
+    '......ODffOODfO........',
+  ];
+  renderPixelMap('player', playerGrid, playerPal, 48, 56);
+
+  // ==========================================================
+  // PLAYER — KICK POSE (24×28 grid → 48×56 rendered)
+  // Same torso, left leg planted, right leg extended
+  // ==========================================================
+  const playerKickGrid = [
+    '........HAAAaaA.........',
+    '.......HAaaaaaAH........',
+    '......HAaaaaaaaAH.......',
+    '......HAaaaaaaaAH.......',
+    '.......OsshhssO.........',
+    '......OsshhhhhsO........',
+    '......OshhhhhhhO........',
+    '......OshhhhhhhO........',
+    '......OsWWEPWWEPO.......',
+    '......OsWWEPWWEPO.......',
+    '......OsshhhhhssO.......',
+    '......OssSMMMSssO.......',
+    '......OssShhhSssO.......',
+    '.......OSsssssSO........',
+    '..OOO..OBBbbBO..OOO....',
+    '.OhsSOOBBbbbbBOOSshO...',
+    '.OhssOBBcbbbcbBOsshO...',
+    '.OsssOBbiibbiiBOsssO...',
+    '.OsssOBBbbbbbbBOsssO...',
+    '.OssSBBBbbbbbbBBSssO...',
+    '.OSsSOBBbbbbbbBOSsSO...',
+    '..OSO.OYYyzZYYO.OSO....',
+    '......OYYyzZYYO........',
+    '......ORrreRrrrrreO....',
+    '......ORrROORrrrreO....',
+    '......ORrROODddfffO....',
+    '......ODddO............',
+    '......ODffO............',
+  ];
+  renderPixelMap('player_kick', playerKickGrid, playerPal, 48, 56);
+
+  // ==========================================================
+  // ENEMY: BRUISER (18×24 grid → 36×48 rendered)
+  // Bulky red-shirt enemy, broad shoulders
+  // ==========================================================
+  const bruiserPal = {
+    ...skinPal, ...eyePal,
+    'H': PAL.black,       // hair
+    'R': PAL.redDark,     // shirt dark
+    'r': PAL.red,         // shirt mid
+    'e': PAL.redLight,    // shirt highlight
+    'G': PAL.darkGrey,    // pants dark
+    'g': PAL.midGrey,     // pants mid
+    'D': PAL.brownDark,   // boot dark
+    'd': PAL.brown,       // boot mid
+    'f': PAL.brownLight,  // boot highlight
+    'K': PAL.darkGrey,    // belt
+  };
+  const bruiserGrid = [
+    '......OHHHHHO.........',
+    '.....OHHHHHHHHO........',
+    '.....OsshhhssO........',
+    '.....OshhhhhsO........',
+    '.....OWEPsWEPO........',
+    '.....OssSSSssO........',
+    '......OSsssSO.........',
+    '..OOOORRrreeROOOO.....',
+    '.OhsOORrreerrOOshO....',
+    '.OssORerrrrreROssO....',
+    '.OssORrrrrrrrROssO....',
+    '.OssORrrrrrrrROssO....',
+    '.OsSOOrrrrrrOOSsO.....',
+    '.OSOO.OKKKKO..OOO.....',
+    '......OGggGggO........',
+    '......OGggGggO........',
+    '......OGggGggO........',
+    '......OGggGggO........',
+    '......OGgOOGgO........',
+    '......OGgOOGgO........',
+    '......ODdOODdO........',
+    '......OdfOOdfO........',
+    '......OdfOOdfO........',
+    '......OOOO.OOOO.......',
+  ];
+  renderPixelMap('bruiser', bruiserGrid, bruiserPal, 36, 48);
+
+  // ==========================================================
+  // ENEMY: COLUMNIST (16×24 grid → 32×48 rendered)
+  // Brown suit, blue-grey pants, slimmer build
+  // ==========================================================
+  const columnistPal = {
+    ...skinPal, ...eyePal,
+    'H': PAL.black,
+    'B': PAL.brownDark,   // suit dark
+    'b': PAL.brown,       // suit mid
+    't': PAL.tan,         // suit highlight
+    'Q': 0x183848,        // pants dark
+    'q': 0x2a5a6a,        // pants mid
+    'D': PAL.brownDark,
+    'd': PAL.brown,
+    'f': PAL.brownLight,
+    'K': PAL.darkGrey,
+    'w': PAL.white,       // shirt collar
+  };
+  const columnistGrid = [
+    '.....OHHHHHHO........',
+    '....OHHHHHHHO........',
+    '....OsshhhssO........',
+    '....OshhhhhsO........',
+    '....OWEPSWEPPO.......',
+    '....OssSSSssO........',
+    '.....OSsssSO.........',
+    '...OOOwBbtOOOOO......',
+    '..OhsOBbbtbbOshO.....',
+    '..OssOBbbtbbOssO.....',
+    '..OssOBbbbbBOssO.....',
+    '..OsSOBbbbbBOSsO.....',
+    '..OSO.OKKKKO.OSO.....',
+    '......OQqqQqO........',
+    '......OQqqQqO........',
+    '......OQqqQqO........',
+    '......OQqqQqO........',
+    '......OQqOOQqO.......',
+    '......OQqOOQqO.......',
+    '......ODdOODdO.......',
+    '......ODdOODdO.......',
+    '......OdfOOdfO.......',
+    '......OOOO.OOOO......',
+    '........................',
+  ];
+  renderPixelMap('columnist', columnistGrid, columnistPal, 32, 48);
+
+  // ==========================================================
+  // ENEMY: SHOUTER (16×24 grid → 32×48 rendered)
+  // Purple outfit, dark pants, aggressive stance
+  // ==========================================================
+  const shouterPal = {
+    ...skinPal, ...eyePal,
+    'H': PAL.black,
+    'V': PAL.purpleDark,  // shirt dark
+    'v': PAL.purple,      // shirt mid
+    'p': PAL.purpleLight, // shirt highlight
+    'G': PAL.darkGrey,    // pants dark
+    'g': PAL.midGrey,     // pants mid
+    'D': PAL.brownDark,
+    'd': PAL.brown,
+    'f': PAL.brownLight,
+    'K': PAL.darkGrey,
+  };
+  const shouterGrid = [
+    '.....OHHHHHHO........',
+    '....OHHHHHHHO........',
+    '....OsshhhssO........',
+    '....OshhhhhsO........',
+    '....OWEPSWEPPO.......',
+    '....OssOOOOssO.......',
+    '.....OSsssSO.........',
+    '...OOOVVvppOOOO......',
+    '..OhsOVvvppvOshO.....',
+    '..OssOVvvvvvOssO.....',
+    '..OssOVvvvvvOssO.....',
+    '..OsSOOvvvvOOSsO.....',
+    '..OSO.OKKKKO.OSO.....',
+    '......OGggGgO........',
+    '......OGggGgO........',
+    '......OGggGgO........',
+    '......OGggGgO........',
+    '......OGgOOGgO.......',
+    '......OGgOOGgO.......',
+    '......ODdOODdO.......',
+    '......ODdOODdO.......',
+    '......OdfOOdfO.......',
+    '......OOOO.OOOO......',
+    '........................',
+  ];
+  renderPixelMap('shouter', shouterGrid, shouterPal, 32, 48);
+
+  // ==========================================================
+  // ENEMY: LOBBYIST (16×24 grid → 32×48 rendered)
+  // Green suit, brown pants, business attire
+  // ==========================================================
+  const lobbyistPal = {
+    ...skinPal, ...eyePal,
+    'H': PAL.black,
+    'L': PAL.greenDark,   // suit dark
+    'l': PAL.green,       // suit mid
+    'n': PAL.greenLight,  // suit highlight
+    'B': PAL.brownDark,   // pants dark
+    'b': PAL.brown,       // pants mid
+    'D': PAL.brownDark,
+    'd': PAL.brown,
+    'f': PAL.brownLight,
+    'K': PAL.darkGrey,
+    'w': PAL.white,       // shirt collar
+  };
+  const lobbyistGrid = [
+    '.....OHHHHHHO........',
+    '....OHHHHHHHO........',
+    '....OsshhhssO........',
+    '....OshhhhhsO........',
+    '....OWEPSWEPPO.......',
+    '....OssSSSssO........',
+    '.....OSsssSO.........',
+    '...OOOwLlnOOOOO......',
+    '..OhsOLllnllOshO.....',
+    '..OssOLllnllOssO.....',
+    '..OssOLllllLOssO.....',
+    '..OsSOOllllOOSsO.....',
+    '..OSO.OKKKKO.OSO.....',
+    '......OBbbBbO........',
+    '......OBbbBbO........',
+    '......OBbbBbO........',
+    '......OBbbBbO........',
+    '......OBbOOBbO.......',
+    '......OBbOOBbO.......',
+    '......ODdOODdO.......',
+    '......ODdOODdO.......',
+    '......OdfOOdfO.......',
+    '......OOOO.OOOO......',
+    '........................',
+  ];
+  renderPixelMap('lobbyist', lobbyistGrid, lobbyistPal, 32, 48);
+
+  // ==========================================================
+  // BOSS BODY (24×27 grid → 48×54 rendered)
+  // Military jacket with medals, olive uniform, no head
+  // (photo head overlaid at runtime)
+  // ==========================================================
+  const bossPal = {
+    ...skinPal,
+    'V': PAL.oliveDark,   // jacket dark
+    'v': PAL.olive,       // jacket mid
+    'n': PAL.oliveLight,  // jacket highlight
+    'Y': PAL.yellowDark,  // epaulette dark
+    'y': PAL.yellow,      // epaulette mid / medal gold
+    'z': PAL.yellowLight, // belt buckle
+    'R': PAL.redDark,     // medal red dark
+    'r': PAL.red,         // medal red
+    'w': PAL.white,       // medal white
+    'D': PAL.brownDark,   // belt dark
+    'd': PAL.brown,       // belt mid
+    'f': PAL.brownLight,  // belt highlight
+    'G': PAL.darkGrey,    // pants dark
+    'g': PAL.midGrey,     // pants mid
+    'K': PAL.black,       // boot
+    'k': 0x1a1a1a,        // boot mid
+    'j': 0x2a2a2a,        // boot highlight
+  };
+  const bossGrid = [
+    '........OssssssO........',
+    '........OssssssO........',
+    '........OssssssO........',
+    '...OYyOOVVvvnnVOOyYO...',
+    '...OYyOVVvvnnvvVOyYO...',
+    '..OVvOVyyvvnnvvVOvVO...',
+    '..OVvOVyyvvvvvvVOvVO...',
+    '..OVvOVrrvvvvvvVOvVO...',
+    '..OVvOVrrVvwvvVVOvVO...',
+    '..OvnOVVvvvvvvVVOnvO...',
+    '..OvnOVVvvvvvvVVOnvO...',
+    '..OssO.VVvvnnVV..OssO..',
+    '..OssO.VVvvnnVV..OssO..',
+    '........ODddzDO........',
+    '........ODddzDO........',
+    '.......OGggOOggGO......',
+    '.......OGggOOggGO......',
+    '.......OGggOOggGO......',
+    '.......OGggOOggGO......',
+    '.......OGggOOggGO......',
+    '.......OGggOOggGO......',
+    '.......OGgOOOOgGO......',
+    '.......OGgOOOOgGO......',
+    '.......OKkkOOKkkO......',
+    '.......OKjkOOKjkO......',
+    '.......OKjkOOKjkO......',
+    '.......OOOO.OOOOO......',
+  ];
+  renderPixelMap('boss_body', bossGrid, bossPal, 48, 54);
 
   // --- Projectile bubble ---
   const pb = scene.make.graphics({ add: false });
